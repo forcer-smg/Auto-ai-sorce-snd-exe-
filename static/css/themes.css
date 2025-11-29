@@ -1,0 +1,249 @@
+/* Hacking Theme - Cyberpunk Style */
+:root {
+    --hack-bg: #0a0e27;
+    --hack-surface: #0f1629;
+    --hack-accent: #00ff41;
+    --hack-accent-alt: #00d4ff;
+    --hack-text: #00ff41;
+    --hack-text-dim: #00d4ff;
+    --hack-border: #1a3a52;
+    --hack-glow: rgba(0, 255, 65, 0.3);
+}
+
+/* Main hacking theme with background image support */
+.theme-hacking {
+    background: var(--hack-bg) !important;
+    background-image: url('/static/images/hacking-bg.jpg?v=1'), 
+                      url('/static/images/hacking-bg.png?v=1'),
+                      url('/static/images/hacking-bg.jpeg?v=1'),
+                      linear-gradient(135deg, #0a0e27 0%, #1a1a3a 50%, #0a0e27 100%) !important;
+    background-size: cover !important;
+    background-position: center center !important;
+    background-attachment: fixed !important;
+    background-repeat: no-repeat !important;
+    color: var(--hack-text) !important;
+    position: relative !important;
+    min-height: 100vh !important;
+}
+
+/* Dark overlay to ensure text readability over image - ADJUSTABLE */
+.theme-hacking::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        180deg,
+        rgba(10, 14, 39, var(--hack-overlay-opacity, 0.4)) 0%,
+        rgba(10, 14, 39, calc(var(--hack-overlay-opacity, 0.4) - 0.1)) 50%,
+        rgba(10, 14, 39, var(--hack-overlay-opacity, 0.4)) 100%
+    );
+    z-index: 0;
+    pointer-events: none;
+    transition: background 0.3s ease;
+}
+
+/* Make image more visible by default */
+:root {
+    --hack-overlay-opacity: 0.4; /* Reduced from 0.75 for better visibility */
+}
+
+/* Ensure all content is above the background */
+.theme-hacking > * {
+    position: relative;
+    z-index: 1;
+}
+
+.theme-hacking .sidebar {
+    background: rgba(15, 22, 41, 0.85) !important;
+    backdrop-filter: blur(8px) !important;
+    border-right: 1px solid var(--hack-border) !important;
+    box-shadow: 0 0 20px var(--hack-glow) !important;
+}
+
+.theme-hacking .activity-icon {
+    color: var(--hack-text-dim) !important;
+    transition: all 0.3s ease !important;
+}
+
+.theme-hacking .activity-icon:hover {
+    color: var(--hack-accent) !important;
+    background: rgba(0, 255, 65, 0.1) !important;
+    box-shadow: 0 0 10px var(--hack-glow) !important;
+}
+
+.theme-hacking .activity-icon:hover svg {
+    transform: scale(1.1) !important;
+    filter: drop-shadow(0 0 5px var(--hack-glow)) !important;
+}
+
+.theme-hacking .activity-icon.active {
+    color: var(--hack-accent) !important;
+    background: rgba(0, 255, 65, 0.2) !important;
+    box-shadow: 0 0 15px var(--hack-glow) !important;
+}
+
+.theme-hacking .activity-icon.active svg {
+    transform: scale(1.15) !important;
+    filter: drop-shadow(0 0 8px var(--hack-glow)) !important;
+}
+
+.theme-hacking .resize-handle:hover {
+    background: rgba(0, 255, 65, 0.2) !important;
+    box-shadow: none !important;
+}
+
+.theme-hacking .view-header {
+    background: rgba(15, 22, 41, 0.7) !important;
+    backdrop-filter: blur(1px) !important;
+    border-bottom: 1px solid var(--hack-border) !important;
+    color: var(--hack-accent) !important;
+    text-shadow: none !important;
+}
+
+.theme-hacking .menu-logo {
+    border: 1px solid var(--hack-border) !important;
+    background: rgba(15, 22, 41, 0.6) !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+}
+
+.theme-hacking .menu-logo img {
+    filter: drop-shadow(0 0 5px var(--hack-glow)) !important;
+}
+
+.theme-hacking .editor-area {
+    background: rgba(10, 14, 39, 0.2) !important;
+    backdrop-filter: none !important;
+}
+
+.theme-hacking .editor-container {
+    background: transparent !important;
+}
+
+.theme-hacking .monaco-editor {
+    background: transparent !important;
+}
+
+.theme-hacking .monaco-editor .monaco-editor-background {
+    background: transparent !important;
+}
+
+.theme-hacking .status-bar {
+    background: rgba(15, 22, 41, 0.5) !important;
+    backdrop-filter: none !important;
+    border-top: 1px solid var(--hack-border) !important;
+    color: var(--hack-text) !important;
+    box-shadow: none !important;
+}
+
+.theme-hacking .tab {
+    background: rgba(15, 22, 41, 0.8) !important;
+    backdrop-filter: blur(3px) !important;
+    color: var(--hack-text-dim) !important;
+    border-right: 1px solid var(--hack-border) !important;
+}
+
+.theme-hacking .tab.active {
+    background: rgba(10, 14, 39, 0.7) !important;
+    backdrop-filter: blur(2px) !important;
+    color: var(--hack-accent) !important;
+    border-bottom: 2px solid var(--hack-accent) !important;
+    box-shadow: 0 -2px 10px var(--hack-glow) !important;
+}
+
+.theme-hacking .terminal-panel {
+    background: rgba(10, 14, 39, 0.4) !important;
+    backdrop-filter: none !important;
+    border-top: 1px solid var(--hack-accent) !important;
+    box-shadow: none !important;
+}
+
+.theme-hacking .terminal-output {
+    color: var(--hack-accent) !important;
+    font-family: 'Courier New', monospace !important;
+    text-shadow: 0 0 5px var(--hack-glow) !important;
+}
+
+.theme-hacking .terminal-prompt {
+    color: var(--hack-accent) !important;
+    text-shadow: 0 0 5px var(--hack-glow) !important;
+}
+
+.theme-hacking .extension-item {
+    background: rgba(15, 22, 41, 0.8) !important;
+    backdrop-filter: blur(3px) !important;
+    border: 1px solid var(--hack-border) !important;
+    box-shadow: 0 0 10px var(--hack-glow) !important;
+    transition: all 0.3s ease !important;
+}
+
+.theme-hacking .extension-item:hover {
+    border-color: var(--hack-accent) !important;
+    box-shadow: 0 0 20px var(--hack-glow) !important;
+    transform: translateY(-2px) !important;
+}
+
+.theme-hacking .ext-btn-primary {
+    background: var(--hack-accent) !important;
+    color: var(--hack-bg) !important;
+    box-shadow: 0 0 10px var(--hack-glow) !important;
+}
+
+.theme-hacking .ext-btn-primary:hover {
+    box-shadow: 0 0 20px var(--hack-glow) !important;
+    transform: scale(1.05) !important;
+}
+
+/* Glitch Animation */
+@keyframes glitch {
+    0%, 100% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(-2px, -2px); }
+    60% { transform: translate(2px, 2px); }
+    80% { transform: translate(2px, -2px); }
+}
+
+.theme-hacking .view-header span {
+    animation: glitch 3s infinite;
+}
+
+/* Scanline Effect - DISABLED for performance */
+.theme-hacking::before {
+    /* Disabled scanline animation for better performance */
+    display: none;
+}
+
+@keyframes scanline {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(100vh); }
+}
+
+/* Pulse Animation */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.theme-hacking .status-item {
+    /* animation: pulse 2s infinite; - Disabled for performance */
+}
+
+/* Typing Effect */
+@keyframes typing {
+    from { width: 0; }
+    to { width: 100%; }
+}
+
+.theme-hacking .terminal-output::after {
+    /* content: '_'; - Disabled for performance */
+    /* animation: blink 1s infinite; - Disabled for performance */
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+

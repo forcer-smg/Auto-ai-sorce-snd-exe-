@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auto_Punch IDE - Debug Console</title>
+    <style>
+        body {
+            background: #1e1e1e;
+            color: #ccc;
+            font-family: 'Consolas', monospace;
+            padding: 20px;
+            margin: 0;
+        }
+        .log {
+            background: #252526;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 3px solid #007acc;
+        }
+        .success { border-left-color: #4ec9b0; }
+        .error { border-left-color: #f48771; }
+        .warning { border-left-color: #dcdcaa; }
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover { background: #005a9e; }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        #console {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            padding: 10px;
+            border: 1px solid #3e3e42;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Auto_Punch IDE - Debug Console</h1>
+    
+    <div class="log">
+        <h3>Quick Tests</h3>
+        <button onclick="testServer()">Test Server</button>
+        <button onclick="testStaticFiles()">Test Static Files</button>
+        <button onclick="testMainPage()">Test Main Page</button>
+        <button onclick="checkConsole()">Check Browser Console</button>
+    </div>
+    
+    <div id="results"></div>
+    
+    <div class="log">
+        <h3>Live Console Output</h3>
+        <div id="console"></div>
+    </div>
+    
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const consoleDiv = document.getElementById('console');
+        
+        function addLog(message, type = 'info') {
+            const log = document.createElement('div');
+            log.className = `log ${type}`;
+            log.innerHTML = `<pre>${new Date().toLocaleTimeString()} [${type.toUpperCase()}] ${message}</pre>`;
+            resultsDiv.appendChild(log);
+            consoleDiv.innerHTML += `${new Date().toLocaleTimeString()} [${type}] ${message}\n`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        async function testServer() {
+            addLog('Testing server connection...', 'info');
+            try {
+                const response = await fetch('/api/debug/info');
+                const data = await response.json();
+                addLog('Server Response: ' + JSON.stringify(data, null, 2), 'success');
+            } catch (error) {
+                addLog('Server Error: ' + error.message, 'error');
+            }
+        }
+        
+        async function testStaticFiles() {
+            addLog('Testing static files...', 'info');
+            
+            const files = [
+                '/static/css/ide.css',
+                '/static/js/ide.js'
+            ];
+            
+            for (const file of files) {
+                try {
+                    const response = await fetch(file);
+                    if (response.ok) {
+                        addLog(`✓ ${file} - OK (${response.status})`, 'success');
+                    } else {
+                        addLog(`✗ ${file} - Error (${response.status})`, 'error');
+                    }
+                } catch (error) {
+                    addLog(`✗ ${file} - Failed: ${error.message}`, 'error');
+                }
+            }
+        }
+        
+        async function testMainPage() {
+            addLog('Testing main page...', 'info');
+            try {
+                const response = await fetch('/');
+                const text = await response.text();
+                if (text.includes('monaco-editor')) {
+                    addLog('✓ Main page contains monaco-editor element', 'success');
+                } else {
+                    addLog('✗ Main page missing monaco-editor element', 'warning');
+                }
+                if (text.includes('ide.js')) {
+                    addLog('✓ Main page includes ide.js script', 'success');
+                } else {
+                    addLog('✗ Main page missing ide.js script', 'error');
+                }
+                if (text.includes('ide.css')) {
+                    addLog('✓ Main page includes ide.css stylesheet', 'success');
+                } else {
+                    addLog('✗ Main page missing ide.css stylesheet', 'error');
+                }
+            } catch (error) {
+                addLog('Main page error: ' + error.message, 'error');
+            }
+        }
+        
+        function checkConsole() {
+            addLog('Browser Console Check:', 'info');
+            addLog('Open browser console (F12) and check for errors', 'warning');
+            addLog('Common issues:', 'info');
+            addLog('1. CORS errors - check server CORS settings', 'warning');
+            addLog('2. 404 errors - check static file paths', 'warning');
+            addLog('3. JavaScript errors - check ide.js syntax', 'warning');
+            addLog('4. Monaco Editor not loading - check CDN connection', 'warning');
+        }
+        
+        // Auto-run tests on load
+        window.addEventListener('load', () => {
+            addLog('Debug console loaded', 'success');
+            addLog('Running initial tests...', 'info');
+            setTimeout(() => {
+                testServer();
+                setTimeout(() => testStaticFiles(), 500);
+                setTimeout(() => testMainPage(), 1000);
+            }, 500);
+        });
+        
+        // Capture console errors
+        window.addEventListener('error', (e) => {
+            addLog(`JavaScript Error: ${e.message} at ${e.filename}:${e.lineno}`, 'error');
+        });
+    </script>
+</body>
+</html>
+

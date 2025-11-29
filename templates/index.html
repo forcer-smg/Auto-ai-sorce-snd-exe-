@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto_Punch IDE - VS Code + Cursor Clone</title>
+        <link rel="stylesheet" href="/static/css/ide.css?v=4">
+        <link rel="stylesheet" href="/static/css/themes.css?v=4">
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Top Menu Bar -->
+        <div class="menu-bar">
+            <div class="menu-logo" id="menu-logo" style="display: none;">
+                <img src="/static/images/hacking-bg.jpg?v=1" alt="Auto_Punch IDE" id="logo-image" onerror="this.style.display='none'; document.getElementById('menu-logo').style.display='none';">
+            </div>
+            <div class="menu-item" onclick="showMenu('file')">File</div>
+            <div class="menu-item" onclick="showMenu('edit')">Edit</div>
+            <div class="menu-item" onclick="showMenu('view')">View</div>
+            <div class="menu-item" onclick="showMenu('run')">Run</div>
+            <div class="menu-item" onclick="showMenu('terminal')">Terminal</div>
+            <div class="menu-item" onclick="showMenu('help')">Help</div>
+            <div class="menu-title">Auto_Punch IDE</div>
+        </div>
+
+        <!-- Main Container -->
+        <div class="main-container">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Activity Bar -->
+                <div class="activity-bar">
+                    <div class="activity-icon active" data-view="explorer" title="File Explorer">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="search" title="Search & Replace">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="git" title="Source Control (Git)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="18" cy="6" r="3"></circle>
+                            <circle cx="6" cy="18" r="3"></circle>
+                            <path d="M18 9v5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path>
+                            <line x1="6" y1="18" x2="6" y2="9"></line>
+                            <line x1="18" y1="6" x2="18" y2="9"></line>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="ai" title="Auto_Punch AI Assistant">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                            <path d="M2 17l10 5 10-5"></path>
+                            <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="todos" title="Task Manager">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 11 12 14 22 4"></polyline>
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="extensions" title="Extensions Marketplace">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="browser" title="Browser Preview">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="18" rx="2" ry="2"></rect>
+                            <line x1="2" y1="7" x2="22" y2="7"></line>
+                            <line x1="8" y1="11" x2="8" y2="11"></line>
+                            <line x1="14" y1="11" x2="14" y2="11"></line>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="settings" title="Settings">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3m15.364 6.364l-4.243-4.243m-4.242 0l-4.243 4.243m8.485 0l-4.242-4.242m4.242 0l-4.243 4.243"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                    <!-- Sidebar Content -->
+                    <div class="sidebar-content" id="sidebar-content">
+                    <!-- Explorer View -->
+                    <div id="explorer-view" class="view active">
+                        <div class="view-header">
+                            <span>FILE EXPLORER</span>
+                            <button class="icon-button" onclick="refreshExplorer()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="file-tree" id="file-tree">
+                            <div class="loading">Loading workspace...</div>
+                        </div>
+                    </div>
+
+                    <!-- Search View -->
+                    <div id="search-view" class="view">
+                        <div class="view-header">SEARCH & REPLACE</div>
+                        <div class="search-container">
+                            <input type="text" id="search-input" placeholder="Search in files...">
+                            <button onclick="performSearch()">Search</button>
+                            <div id="search-results"></div>
+                        </div>
+                    </div>
+
+                    <!-- Git View -->
+                    <div id="git-view" class="view">
+                        <div class="view-header">SOURCE CONTROL (GIT)</div>
+                        <div id="git-status" class="git-container">
+                            <button onclick="refreshGitStatus()">Refresh</button>
+                            <div id="git-info">Click refresh to check git status</div>
+                        </div>
+                    </div>
+
+                    <!-- AI Chat View -->
+                    <div id="ai-view" class="view">
+                        <div class="view-header">
+                            <span>AUTO_PUNCH AI ASSISTANT</span>
+                            <button class="icon-button" onclick="refreshToolkitStatus()" title="Refresh Toolkit Status">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="toolkit-status-panel" id="toolkit-status-panel">
+                            <div class="toolkit-status-header">🔧 SECURITY TOOLKIT STATUS</div>
+                            <div id="toolkit-status-content" class="toolkit-status-content">
+                                <div class="loading">Loading toolkit status...</div>
+                            </div>
+                        </div>
+                        <div class="chat-container">
+                            <div id="chat-messages" class="chat-messages"></div>
+                            <div class="chat-input-container">
+                                <input type="text" id="chat-input" placeholder="Ask Auto_Punch Ai anything..." onkeypress="handleChatKeyPress(event)">
+                                <button onclick="sendChatMessage()">Send</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Todos View -->
+                    <div id="todos-view" class="view">
+                        <div class="view-header">
+                            <span>TASK MANAGER</span>
+                            <button class="icon-button" onclick="refreshTodos()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="todos-container">
+                            <div class="add-todo">
+                                <input type="text" id="new-todo-input" placeholder="Add new todo..." onkeypress="handleTodoKeyPress(event)">
+                                <button onclick="addTodo()">Add</button>
+                            </div>
+                            <div id="todos-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Extensions View -->
+                    <div id="extensions-view" class="view">
+                        <div class="view-header">
+                            <span>EXTENSIONS MARKETPLACE</span>
+                            <button class="icon-button" onclick="refreshExtensions()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="extensions-container">
+                            <div class="extensions-search">
+                                <input type="text" id="extension-search-input" placeholder="Search extensions..." onkeypress="handleExtensionSearchKeyPress(event)">
+                                <button onclick="searchExtensions()">Search</button>
+                            </div>
+                            <div class="extensions-tabs">
+                                <button class="ext-tab active" onclick="switchExtensionTab('installed')">Installed</button>
+                                <button class="ext-tab" onclick="switchExtensionTab('marketplace')">Marketplace</button>
+                            </div>
+                            <div id="extensions-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Browser Preview View -->
+                    <div id="browser-view" class="view">
+                        <div class="view-header">
+                            <span>BROWSER PREVIEW</span>
+                            <button class="icon-button" onclick="refreshBrowser()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="browser-controls">
+                            <div class="browser-url-bar">
+                                <input type="text" id="browser-url-input" placeholder="Enter URL or search..." onkeypress="handleBrowserUrlKeyPress(event)">
+                                <button onclick="navigateBrowser()" title="Go">Go</button>
+                                <button onclick="browserBack()" title="Back">←</button>
+                                <button onclick="browserForward()" title="Forward">→</button>
+                                <button onclick="browserReload()" title="Reload">⟳</button>
+                            </div>
+                            <div class="browser-status" id="browser-status">
+                                Ready - Enter a URL to start browsing
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings View -->
+                    <div id="settings-view" class="view">
+                        <div class="view-header">
+                            <span>SETTINGS & PREFERENCES</span>
+                        </div>
+                        <div class="settings-container">
+                            <div class="settings-search">
+                                <input type="text" id="settings-search-input" placeholder="Search settings..." onkeypress="handleSettingsSearch(event)">
+                            </div>
+                            <div class="settings-sections">
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">Appearance</h3>
+                                    <div class="settings-item">
+                                        <label>Theme</label>
+                                        <select id="theme-select" onchange="changeTheme(this.value)">
+                                            <option value="default">Default (VS Code)</option>
+                                            <option value="hacking">Hacking Mode (Cyberpunk)</option>
+                                            <option value="dark">Dark</option>
+                                            <option value="light">Light</option>
+                                        </select>
+                                    </div>
+                                    <div class="settings-item" id="overlay-opacity-setting" style="display: none;">
+                                        <label>Background Image Visibility</label>
+                                        <input type="range" id="overlay-opacity-slider" min="0" max="100" value="40" oninput="changeOverlayOpacity(this.value)">
+                                        <span id="overlay-opacity-value">40%</span>
+                                        <small style="display: block; color: #858585; margin-top: 4px; font-size: 11px;">Lower = More visible image, Higher = Darker overlay</small>
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Show Logo in Menu</label>
+                                        <input type="checkbox" id="logo-toggle" onchange="toggleLogo(this.checked)">
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Font Size</label>
+                                        <input type="range" id="font-size-slider" min="10" max="24" value="14" oninput="changeFontSize(this.value)">
+                                        <span id="font-size-value">14px</span>
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Enable Animations</label>
+                                        <input type="checkbox" id="animations-toggle" checked onchange="toggleAnimations(this.checked)">
+                                    </div>
+                                </div>
+
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">Editor</h3>
+                                    <div class="settings-item">
+                                        <label>Word Wrap</label>
+                                        <input type="checkbox" id="word-wrap-toggle" checked onchange="toggleWordWrap(this.checked)">
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Line Numbers</label>
+                                        <input type="checkbox" id="line-numbers-toggle" checked onchange="toggleLineNumbers(this.checked)">
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Minimap</label>
+                                        <input type="checkbox" id="minimap-toggle" checked onchange="toggleMinimap(this.checked)">
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Tab Size</label>
+                                        <input type="number" id="tab-size-input" min="1" max="8" value="4" onchange="changeTabSize(this.value)">
+                                    </div>
+                                </div>
+
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">Terminal</h3>
+                                    <div class="settings-item">
+                                        <label>Default Shell</label>
+                                        <select id="shell-select" onchange="changeShell(this.value)">
+                                            <option value="powershell">PowerShell</option>
+                                            <option value="cmd">CMD</option>
+                                            <option value="bash">Bash (if available)</option>
+                                        </select>
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Show Terminal Status on Dashboard</label>
+                                        <input type="checkbox" id="terminal-status-toggle" checked onchange="toggleTerminalStatus(this.checked)">
+                                    </div>
+                                </div>
+
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">AI & Automation</h3>
+                                    <div class="settings-item">
+                                        <label>Auto_Punch Ai Model</label>
+                                        <select id="ai-model-select" onchange="changeAIModel(this.value)">
+                                            <option value="hacxgpt">HacxGPT (Full AI - Unrestricted)</option>
+                                            <option value="nl-automation">Natural Language Automation</option>
+                                            <option value="terminal">Terminal Automation</option>
+                                        </select>
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Enable AI Auto-Execution</label>
+                                        <input type="checkbox" id="ai-auto-exec-toggle" checked onchange="toggleAIAutoExec(this.checked)">
+                                    </div>
+                                </div>
+
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">Workspace</h3>
+                                    <div class="settings-item">
+                                        <label>Default Workspace</label>
+                                        <input type="text" id="default-workspace-input" placeholder="C:\Users\..." onchange="setDefaultWorkspace(this.value)">
+                                        <button onclick="browseWorkspace()">Browse</button>
+                                    </div>
+                                    <div class="settings-item">
+                                        <label>Auto-save</label>
+                                        <input type="checkbox" id="auto-save-toggle" onchange="toggleAutoSave(this.checked)">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editor Area -->
+            <div class="editor-area">
+                <!-- Tab Bar -->
+                <div class="tab-bar" id="tab-bar">
+                    <!-- Tabs will be added dynamically -->
+                </div>
+
+                <!-- Editor Container -->
+                <div class="editor-container">
+                    <div id="monaco-editor" class="monaco-editor" style="width: 100%; height: 100%;">
+                        <div id="editor-loading" style="padding: 20px; color: #858585; text-align: center;">
+                            <p>Loading Monaco Editor...</p>
+                            <p style="font-size: 12px;">If this message persists, check the browser console (F12) for errors.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Browser Preview Panel (hidden by default, shown when browser view is active) -->
+                    <div class="browser-preview-panel" id="browser-preview-panel" style="display: none;">
+                        <div class="browser-preview-header">
+                            <span>BROWSER PREVIEW</span>
+                            <div class="browser-preview-controls">
+                                <button class="browser-btn" onclick="browserBack()" title="Back">←</button>
+                                <button class="browser-btn" onclick="browserForward()" title="Forward">→</button>
+                                <button class="browser-btn" onclick="browserReload()" title="Reload">⟳</button>
+                                <input type="text" id="browser-preview-url" class="browser-url-display" readonly>
+                                <button class="browser-btn" onclick="toggleBrowserFullscreen()" title="Fullscreen">⛶</button>
+                                <button class="browser-btn" onclick="closeBrowserPreview()" title="Close">×</button>
+                            </div>
+                        </div>
+                        <iframe id="browser-preview-frame" class="browser-preview-frame" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" style="width: 100%; height: calc(100% - 40px); border: none; background: white;"></iframe>
+                    </div>
+                </div>
+
+                <!-- Status Bar -->
+                <div class="status-bar">
+                    <div class="status-item" id="cursor-position">Ln 1, Col 1</div>
+                    <div class="status-item" id="file-encoding">UTF-8</div>
+                    <div class="status-item" id="file-language">Plain Text</div>
+                    <div class="status-item" id="terminal-status" style="display: none;">
+                        <span id="terminal-status-text"></span>
+                    </div>
+                    <div class="status-item" id="ai-status">🤖 Auto_Punch Ai Ready</div>
+                </div>
+            </div>
+
+            <!-- Terminal Panel -->
+            <div class="terminal-panel" id="terminal-panel" style="display: none;">
+                <div class="terminal-header">
+                    <span>TERMINAL</span>
+                    <button onclick="toggleTerminal()" title="Close Terminal">×</button>
+                </div>
+                <div class="terminal-content" id="terminal-content">
+                    <div class="terminal-output" id="terminal-output">
+                        <div style="color: #858585; padding: 10px;">
+                            Auto_Punch IDE Terminal - Type commands and press Enter
+                            <br>Use Ctrl+` to toggle terminal
+                        </div>
+                    </div>
+                    <div class="terminal-input-line">
+                        <span class="terminal-prompt">$</span>
+                        <input type="text" id="terminal-input" class="terminal-input" placeholder="Enter command..." onkeypress="handleTerminalKeyPress(event)" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Debug logging
+        console.log('HTML loaded, waiting for scripts...');
+        
+        // Check if elements exist
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded');
+            console.log('Monaco editor element:', document.getElementById('monaco-editor'));
+            console.log('Activity icons:', document.querySelectorAll('.activity-icon').length);
+        });
+    </script>
+    <script src="/static/js/ide.js?v=4"></script>
+    <script>
+        console.log('ide.js script tag loaded');
+    </script>
+</body>
+</html>

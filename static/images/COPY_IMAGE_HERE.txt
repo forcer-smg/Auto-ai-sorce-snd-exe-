@@ -1,0 +1,33 @@
+========================================
+BACKGROUND IMAGE PLACEMENT
+========================================
+
+Place your background image file here with one of these names:
+
+- hacking-bg.jpg
+- hacking-bg.png
+
+The image will automatically be used as the background
+for the Hacking Theme (Cyberpunk mode).
+
+========================================
+QUICK SETUP:
+========================================
+
+1. Copy your image file to this folder
+2. Rename it to: hacking-bg.jpg (or .png)
+3. Restart the IDE server
+4. Go to Settings → Appearance → Theme
+5. Select "Hacking Mode (Cyberpunk)"
+6. Enjoy your custom background!
+
+========================================
+RECOMMENDED:
+========================================
+
+- Size: 1920x1080 or larger
+- Format: JPG or PNG
+- File size: Under 5MB for best performance
+
+========================================
+

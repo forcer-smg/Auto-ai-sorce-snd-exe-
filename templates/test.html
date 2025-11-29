@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auto_Punch IDE Test</title>
+    <style>
+        body {
+            background: #1e1e1e;
+            color: #ccc;
+            font-family: Arial;
+            padding: 20px;
+        }
+        .test-box {
+            background: #2d2d30;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { color: #4ec9b0; }
+        .error { color: #f48771; }
+    </style>
+</head>
+<body>
+    <h1>Auto_Punch IDE - Server Test</h1>
+    
+    <div class="test-box">
+        <h2>Server Status</h2>
+        <p class="success">✓ Server is running!</p>
+        <p>If you see this page, the Flask server is working correctly.</p>
+    </div>
+    
+    <div class="test-box">
+        <h2>Static Files Test</h2>
+        <p id="css-test">Testing CSS loading...</p>
+        <p id="js-test">Testing JavaScript loading...</p>
+    </div>
+    
+    <div class="test-box">
+        <h2>Next Steps</h2>
+        <p>If this page works, go back to: <a href="/" style="color: #4ec9b0;">Main IDE</a></p>
+        <p>Check browser console (F12) for any JavaScript errors.</p>
+    </div>
+    
+    <script>
+        console.log('Test page loaded');
+        
+        // Test if CSS loaded
+        const cssTest = document.getElementById('css-test');
+        const link = document.querySelector('link[href*="ide.css"]');
+        if (link) {
+            cssTest.innerHTML = '✓ CSS file found in HTML';
+            cssTest.className = 'success';
+        } else {
+            cssTest.innerHTML = '✗ CSS file not found';
+            cssTest.className = 'error';
+        }
+        
+        // Test JavaScript
+        const jsTest = document.getElementById('js-test');
+        fetch('/static/js/ide.js')
+            .then(r => {
+                if (r.ok) {
+                    jsTest.innerHTML = '✓ JavaScript file accessible';
+                    jsTest.className = 'success';
+                } else {
+                    jsTest.innerHTML = '✗ JavaScript file not accessible';
+                    jsTest.className = 'error';
+                }
+            })
+            .catch(e => {
+                jsTest.innerHTML = '✗ Error: ' + e.message;
+                jsTest.className = 'error';
+            });
+    </script>
+</body>
+</html>
+
