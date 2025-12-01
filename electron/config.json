@@ -1,0 +1,9 @@
+{
+  "serverUrl": "http://localhost:5001",
+  "useLocalServer": true,
+  "railwayUrl": "",
+  "supabaseUrl": "",
+  "production": false,
+  "note": "Using local server for development. Change useLocalServer to false and set serverUrl for production deployment."
+}
+

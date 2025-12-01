@@ -13,9 +13,7 @@
 /* Main hacking theme with background image support */
 .theme-hacking {
     background: var(--hack-bg) !important;
-    background-image: url('/static/images/hacking-bg.jpg?v=1'), 
-                      url('/static/images/hacking-bg.png?v=1'),
-                      url('/static/images/hacking-bg.jpeg?v=1'),
+    background-image: url('/static/images/hacking-bg.jpg?v=1'),
                       linear-gradient(135deg, #0a0e27 0%, #1a1a3a 50%, #0a0e27 100%) !important;
     background-size: cover !important;
     background-position: center center !important;

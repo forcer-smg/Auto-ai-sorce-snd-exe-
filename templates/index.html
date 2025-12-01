@@ -6,8 +6,45 @@
     <title>Auto_Punch IDE - VS Code + Cursor Clone</title>
         <link rel="stylesheet" href="/static/css/ide.css?v=4">
         <link rel="stylesheet" href="/static/css/themes.css?v=4">
+    <!-- Load Socket.IO FIRST using direct script tag (most reliable) -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js" onerror="console.error('Primary Socket.IO CDN failed'); window.socketIOFailed = true;"></script>
+    <script>
+        // Verify Socket.IO loaded and expose io globally if needed
+        (function() {
+            // Wait a moment for script to execute
+            setTimeout(function() {
+                if (typeof io === 'undefined' && typeof window.io === 'undefined') {
+                    console.warn('[SCRIPT] Socket.IO not available from primary CDN, trying fallback...');
+                    // Try fallback
+                    const fallback = document.createElement('script');
+                    fallback.src = 'https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js';
+                    fallback.onload = function() {
+                        console.log('[SCRIPT] Fallback Socket.IO loaded');
+                        setTimeout(function() {
+                            if (typeof io !== 'undefined' || typeof window.io !== 'undefined') {
+                                console.log('[SCRIPT] ✅ Socket.IO available from fallback');
+                                window.socketIOLoaded = true;
+                                window.dispatchEvent(new Event('socketio-loaded'));
+                            } else {
+                                console.error('[SCRIPT] Fallback loaded but io still not available');
+                            }
+                        }, 200);
+                    };
+                    fallback.onerror = function() {
+                        console.error('[SCRIPT] Fallback CDN also failed');
+                        window.socketIOFailed = true;
+                    };
+                    document.head.appendChild(fallback);
+                } else {
+                    console.log('[SCRIPT] ✅ Socket.IO loaded successfully');
+                    window.socketIOLoaded = true;
+                    window.dispatchEvent(new Event('socketio-loaded'));
+                }
+            }, 200);
+        })();
+    </script>
+    <!-- Load Monaco Editor AFTER Socket.IO -->
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -16,12 +53,177 @@
             <div class="menu-logo" id="menu-logo" style="display: none;">
                 <img src="/static/images/hacking-bg.jpg?v=1" alt="Auto_Punch IDE" id="logo-image" onerror="this.style.display='none'; document.getElementById('menu-logo').style.display='none';">
             </div>
-            <div class="menu-item" onclick="showMenu('file')">File</div>
-            <div class="menu-item" onclick="showMenu('edit')">Edit</div>
-            <div class="menu-item" onclick="showMenu('view')">View</div>
-            <div class="menu-item" onclick="showMenu('run')">Run</div>
+            <div class="menu-item-container">
+                <div class="menu-item" onclick="toggleMenuDropdown('file', event)">File</div>
+                <div class="menu-dropdown" id="file-menu">
+                    <div class="menu-dropdown-item" onclick="createNewTab(); closeMenuDropdowns();">
+                        <span>New File</span>
+                        <span class="menu-shortcut">Ctrl+N</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="openFileDialog(); closeMenuDropdowns();">
+                        <span>Open File...</span>
+                        <span class="menu-shortcut">Ctrl+O</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="saveCurrentFile(); closeMenuDropdowns();">
+                        <span>Save</span>
+                        <span class="menu-shortcut">Ctrl+S</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="saveAllFiles(); closeMenuDropdowns();">
+                        <span>Save All</span>
+                        <span class="menu-shortcut">Ctrl+K S</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="closeCurrentTab(); closeMenuDropdowns();">
+                        <span>Close Editor</span>
+                        <span class="menu-shortcut">Ctrl+W</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="closeAllTabs(); closeMenuDropdowns();">
+                        <span>Close All</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="openWorkspaceFolder(); closeMenuDropdowns();">
+                        <span>Open Folder...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="menu-item-container">
+                <div class="menu-item" onclick="toggleMenuDropdown('edit', event)">Edit</div>
+                <div class="menu-dropdown" id="edit-menu">
+                    <div class="menu-dropdown-item" onclick="undoAction(); closeMenuDropdowns();">
+                        <span>Undo</span>
+                        <span class="menu-shortcut">Ctrl+Z</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="redoAction(); closeMenuDropdowns();">
+                        <span>Redo</span>
+                        <span class="menu-shortcut">Ctrl+Y</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="cutAction(); closeMenuDropdowns();">
+                        <span>Cut</span>
+                        <span class="menu-shortcut">Ctrl+X</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="copyAction(); closeMenuDropdowns();">
+                        <span>Copy</span>
+                        <span class="menu-shortcut">Ctrl+C</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="pasteAction(); closeMenuDropdowns();">
+                        <span>Paste</span>
+                        <span class="menu-shortcut">Ctrl+V</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="findInFile(); closeMenuDropdowns();">
+                        <span>Find</span>
+                        <span class="menu-shortcut">Ctrl+F</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="replaceInFile(); closeMenuDropdowns();">
+                        <span>Replace</span>
+                        <span class="menu-shortcut">Ctrl+H</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="formatDocument(); closeMenuDropdowns();">
+                        <span>Format Document</span>
+                        <span class="menu-shortcut">Shift+Alt+F</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="toggleComment(); closeMenuDropdowns();">
+                        <span>Toggle Line Comment</span>
+                        <span class="menu-shortcut">Ctrl+/</span>
+                    </div>
+                </div>
+            </div>
+            <div class="menu-item-container">
+                <div class="menu-item" onclick="toggleMenuDropdown('view', event)">View</div>
+                <div class="menu-dropdown" id="view-menu">
+                    <div class="menu-dropdown-item" onclick="showCommandPalette(); closeMenuDropdowns();">
+                        <span>Command Palette...</span>
+                        <span class="menu-shortcut">Ctrl+Shift+P</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="toggleSidebar(); closeMenuDropdowns();">
+                        <span>Toggle Sidebar</span>
+                        <span class="menu-shortcut">Ctrl+B</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="toggleTerminal(); closeMenuDropdowns();">
+                        <span>Toggle Terminal</span>
+                        <span class="menu-shortcut">Ctrl+`</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="togglePanel(); closeMenuDropdowns();">
+                        <span>Toggle Panel</span>
+                        <span class="menu-shortcut">Ctrl+J</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="switchView('explorer'); closeMenuDropdowns();">
+                        <span>Explorer</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="switchView('search'); closeMenuDropdowns();">
+                        <span>Search</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="switchView('git'); closeMenuDropdowns();">
+                        <span>Source Control</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="switchView('ai'); closeMenuDropdowns();">
+                        <span>AI Assistant</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="switchView('toolkit'); loadToolkit(); closeMenuDropdowns();">
+                        <span>RedTeam Toolkit</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="switchView('settings'); closeMenuDropdowns();">
+                        <span>Settings</span>
+                        <span class="menu-shortcut">Ctrl+,</span>
+                    </div>
+                </div>
+            </div>
+            <div class="menu-item-container">
+                <div class="menu-item" onclick="toggleMenuDropdown('run', event)">Run</div>
+                <div class="menu-dropdown" id="run-menu">
+                    <div class="menu-dropdown-item" onclick="runCurrentFile(); closeMenuDropdowns();">
+                        <span>Run Active File</span>
+                        <span class="menu-shortcut">F5</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="runWithoutDebugging(); closeMenuDropdowns();">
+                        <span>Run Without Debugging</span>
+                        <span class="menu-shortcut">Ctrl+F5</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="startDebugging(); closeMenuDropdowns();">
+                        <span>Start Debugging</span>
+                        <span class="menu-shortcut">F5</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="stopDebugging(); closeMenuDropdowns();">
+                        <span>Stop</span>
+                        <span class="menu-shortcut">Shift+F5</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="executeInTerminal(); closeMenuDropdowns();">
+                        <span>Run in Terminal</span>
+                    </div>
+                </div>
+            </div>
             <div class="menu-item" onclick="showMenu('terminal')">Terminal</div>
-            <div class="menu-item" onclick="showMenu('help')">Help</div>
+            <div class="menu-item" onclick="showMenu('toolkit')">🔧 RedTeam Toolkit</div>
+            <div class="menu-item-container">
+                <div class="menu-item" onclick="toggleMenuDropdown('help', event)">Help</div>
+                <div class="menu-dropdown" id="help-menu">
+                    <div class="menu-dropdown-item" onclick="showHelpMenu(); closeMenuDropdowns();">
+                        <span>Welcome</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="showHelpMenu(); setTimeout(() => switchHelpTab('shortcuts'), 100); closeMenuDropdowns();">
+                        <span>Keyboard Shortcuts</span>
+                        <span class="menu-shortcut">Ctrl+K Ctrl+S</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="showHelpMenu(); setTimeout(() => switchHelpTab('docs'), 100); closeMenuDropdowns();">
+                        <span>Documentation</span>
+                    </div>
+                    <div class="menu-dropdown-item" onclick="showHelpMenu(); setTimeout(() => switchHelpTab('tips'), 100); closeMenuDropdowns();">
+                        <span>Tips & Tricks</span>
+                    </div>
+                    <div class="menu-dropdown-separator"></div>
+                    <div class="menu-dropdown-item" onclick="showHelpMenu(); setTimeout(() => switchHelpTab('about'), 100); closeMenuDropdowns();">
+                        <span>About</span>
+                    </div>
+                </div>
+            </div>
             <div class="menu-title">Auto_Punch IDE</div>
         </div>
 
@@ -86,6 +288,20 @@
                             <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3m15.364 6.364l-4.243-4.243m-4.242 0l-4.243 4.243m8.485 0l-4.242-4.242m4.242 0l-4.243 4.243"></path>
                         </svg>
                     </div>
+                    <div class="activity-icon" data-view="ssh" title="SSH Connections">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="18" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                            <path d="M7 8h10M7 12h10M7 16h5"></path>
+                        </svg>
+                    </div>
+                    <div class="activity-icon" data-view="debug" title="Debug">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
                 </div>
 
                     <!-- Sidebar Content -->
@@ -94,11 +310,18 @@
                     <div id="explorer-view" class="view active">
                         <div class="view-header">
                             <span>FILE EXPLORER</span>
-                            <button class="icon-button" onclick="refreshExplorer()" title="Refresh">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-                                </svg>
-                            </button>
+                            <div style="display: flex; gap: 5px;">
+                                <button class="icon-button" onclick="openWorkspaceFolder()" title="Open Folder in File Explorer">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                    </svg>
+                                </button>
+                                <button class="icon-button" onclick="refreshExplorer()" title="Refresh">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="file-tree" id="file-tree">
                             <div class="loading">Loading workspace...</div>
@@ -215,6 +438,168 @@
                         </div>
                     </div>
 
+                    <!-- RedTeam Toolkit View -->
+                    <div id="toolkit-view" class="view">
+                        <div class="view-header">
+                            <span>🔧 REDTEAM TOOLKIT</span>
+                            <button class="icon-button" onclick="refreshToolkit()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="view-content" id="toolkit-content" style="padding: 20px; overflow-y: auto; height: calc(100vh - 120px); position: relative;">
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <input type="text" id="toolkit-search" placeholder="🔍 Search tools..." style="width: 100%; padding: 10px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 5px;" oninput="searchToolkit(this.value)">
+                            </div>
+                            <div id="toolkit-category-nav" style="margin-bottom: 20px; padding: 10px; background: rgba(78, 201, 176, 0.1); border-radius: 5px; display: none;">
+                                <div style="font-weight: bold; margin-bottom: 10px; color: #4ec9b0;">📋 Jump to Category:</div>
+                                <div id="category-links" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                            </div>
+                            <div class="toolkit-categories" id="toolkit-categories">
+                                <div style="color: #858585; padding: 20px; text-align: center;">
+                                    Loading RedTeam Toolkit...
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Scroll Buttons -->
+                        <button id="toolkit-scroll-up" onclick="scrollToolkit('up')" style="position: fixed; bottom: 80px; right: 30px; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #4ec9b0 0%, #3ba899 100%); border: none; color: white; font-size: 24px; cursor: pointer; box-shadow: 0 4px 12px rgba(78, 201, 176, 0.4); z-index: 1000; display: none; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.1)'; this.style.boxShadow='0 6px 16px rgba(78, 201, 176, 0.6)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(78, 201, 176, 0.4)'" title="Scroll Up">↑</button>
+                        <button id="toolkit-scroll-down" onclick="scrollToolkit('down')" style="position: fixed; bottom: 20px; right: 30px; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #4ec9b0 0%, #3ba899 100%); border: none; color: white; font-size: 24px; cursor: pointer; box-shadow: 0 4px 12px rgba(78, 201, 176, 0.4); z-index: 1000; display: none; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.1)'; this.style.boxShadow='0 6px 16px rgba(78, 201, 176, 0.6)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(78, 201, 176, 0.4)'" title="Scroll Down">↓</button>
+                    </div>
+
+                    <!-- SSH Connections View -->
+                    <div id="ssh-view" class="view">
+                        <div class="view-header">
+                            <span>🔐 SSH CONNECTIONS</span>
+                            <button class="icon-button" onclick="refreshSSHConnections()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="view-content" style="padding: 20px; overflow-y: auto; height: calc(100vh - 120px);">
+                            <div style="margin-bottom: 20px; padding: 15px; background: rgba(78, 201, 176, 0.1); border-radius: 5px;">
+                                <h3 style="margin-top: 0; color: #4ec9b0;">➕ Add New SSH Connection</h3>
+                                <div class="form-group" style="margin-bottom: 10px;">
+                                    <label>Host/Server:</label>
+                                    <input type="text" id="ssh-host" placeholder="example.com or 192.168.1.100" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 10px;">
+                                    <label>Port:</label>
+                                    <input type="number" id="ssh-port" value="22" placeholder="22" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 10px;">
+                                    <label>Username:</label>
+                                    <input type="text" id="ssh-username" placeholder="root or user" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 10px;">
+                                    <label>Authentication Method:</label>
+                                    <select id="ssh-auth-method" onchange="toggleSSHAuthMethod()" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                        <option value="password">Password</option>
+                                        <option value="key">SSH Key</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="ssh-password-group" style="margin-bottom: 10px;">
+                                    <label>Password:</label>
+                                    <input type="password" id="ssh-password" placeholder="Enter password" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                </div>
+                                <div class="form-group" id="ssh-key-group" style="margin-bottom: 10px; display: none;">
+                                    <label>Private Key Path:</label>
+                                    <input type="text" id="ssh-key-path" placeholder="C:\Users\YourName\.ssh\id_rsa" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                    <small style="color: #858585; font-size: 11px;">Path to your private key file (supports RSA, Ed25519, ECDSA, DSA)</small>
+                                </div>
+                                <div class="form-group" id="ssh-key-passphrase-group" style="margin-bottom: 10px; display: none;">
+                                    <label>Key Passphrase (if encrypted):</label>
+                                    <input type="password" id="ssh-key-passphrase" placeholder="Enter passphrase if key is encrypted" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                    <small style="color: #858585; font-size: 11px;">Leave empty if key is not encrypted</small>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 10px;">
+                                    <label>Connection Name (Optional):</label>
+                                    <input type="text" id="ssh-name" placeholder="My Server" style="width: 100%; padding: 8px; border: 1px solid #3c3c3c; background: #252526; color: #cccccc; border-radius: 3px;">
+                                </div>
+                                <button class="btn-primary" onclick="addSSHConnection()" style="width: 100%; padding: 10px; margin-top: 10px;">
+                                    ➕ Add Connection
+                                </button>
+                            </div>
+                            <div id="ssh-connections-list" style="margin-top: 20px;">
+                                <h3 style="color: #4ec9b0; margin-bottom: 15px;">Saved Connections</h3>
+                                <div id="ssh-connections" style="display: grid; gap: 10px;">
+                                    <!-- Connections will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Debug View -->
+                    <div id="debug-view" class="view">
+                        <div class="view-header">
+                            <span>🐛 DEBUG</span>
+                            <button class="icon-button" onclick="refreshDebugView()" title="Refresh">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="view-content" style="padding: 15px; overflow-y: auto; height: calc(100vh - 120px);">
+                            <!-- Debug Controls -->
+                            <div class="debug-controls" style="margin-bottom: 20px; padding: 15px; background: rgba(78, 201, 176, 0.1); border-radius: 5px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">
+                                    <button id="debug-start-btn" class="btn-primary" onclick="startDebugging()" style="padding: 8px 15px; font-size: 13px;">
+                                        ▶️ Start Debugging
+                                    </button>
+                                    <button id="debug-stop-btn" class="btn-secondary" onclick="stopDebugging()" style="padding: 8px 15px; font-size: 13px; display: none;">
+                                        ⏹️ Stop
+                                    </button>
+                                    <button id="debug-continue-btn" class="btn-secondary" onclick="debugContinue()" style="padding: 8px 15px; font-size: 13px; display: none;">
+                                        ▶️ Continue
+                                    </button>
+                                    <button id="debug-step-over-btn" class="btn-secondary" onclick="debugStepOver()" style="padding: 8px 15px; font-size: 13px; display: none;">
+                                        ⏭️ Step Over
+                                    </button>
+                                    <button id="debug-step-into-btn" class="btn-secondary" onclick="debugStepInto()" style="padding: 8px 15px; font-size: 13px; display: none;">
+                                        ⬇️ Step Into
+                                    </button>
+                                    <button id="debug-step-out-btn" class="btn-secondary" onclick="debugStepOut()" style="padding: 8px 15px; font-size: 13px; display: none;">
+                                        ⬆️ Step Out
+                                    </button>
+                                </div>
+                                <div id="debug-status" style="padding: 10px; background: rgba(0,0,0,0.2); border-radius: 3px; font-size: 12px; color: #858585;">
+                                    Status: Not debugging
+                                </div>
+                            </div>
+
+                            <!-- Breakpoints -->
+                            <div class="debug-section" style="margin-bottom: 20px;">
+                                <h3 style="color: #4ec9b0; margin-bottom: 10px; font-size: 14px;">Breakpoints</h3>
+                                <div id="breakpoints-list" style="background: #252526; border: 1px solid #3e3e42; border-radius: 3px; padding: 10px; min-height: 100px; max-height: 200px; overflow-y: auto;">
+                                    <div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">
+                                        No breakpoints set. Click in the gutter to add breakpoints.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Variables -->
+                            <div class="debug-section" style="margin-bottom: 20px;">
+                                <h3 style="color: #4ec9b0; margin-bottom: 10px; font-size: 14px;">Variables</h3>
+                                <div id="debug-variables" style="background: #252526; border: 1px solid #3e3e42; border-radius: 3px; padding: 10px; min-height: 150px; max-height: 300px; overflow-y: auto;">
+                                    <div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">
+                                        Variables will appear here when debugging
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Call Stack -->
+                            <div class="debug-section">
+                                <h3 style="color: #4ec9b0; margin-bottom: 10px; font-size: 14px;">Call Stack</h3>
+                                <div id="debug-callstack" style="background: #252526; border: 1px solid #3e3e42; border-radius: 3px; padding: 10px; min-height: 100px; max-height: 200px; overflow-y: auto;">
+                                    <div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">
+                                        Call stack will appear here when debugging
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Settings View -->
                     <div id="settings-view" class="view">
                         <div class="view-header">
@@ -324,6 +709,7 @@
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
 
@@ -358,6 +744,7 @@
                         </div>
                         <iframe id="browser-preview-frame" class="browser-preview-frame" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals" style="width: 100%; height: calc(100% - 40px); border: none; background: white;"></iframe>
                     </div>
+
                 </div>
 
                 <!-- Status Bar -->
@@ -365,7 +752,7 @@
                     <div class="status-item" id="cursor-position">Ln 1, Col 1</div>
                     <div class="status-item" id="file-encoding">UTF-8</div>
                     <div class="status-item" id="file-language">Plain Text</div>
-                    <div class="status-item" id="terminal-status" style="display: none;">
+                    <div class="status-item" id="terminal-status" style="display: none; cursor: pointer;" title="Click to view AI processing in terminal">
                         <span id="terminal-status-text"></span>
                     </div>
                     <div class="status-item" id="ai-status">🤖 Auto_Punch Ai Ready</div>
@@ -388,6 +775,290 @@
                     <div class="terminal-input-line">
                         <span class="terminal-prompt">$</span>
                         <input type="text" id="terminal-input" class="terminal-input" placeholder="Enter command..." onkeypress="handleTerminalKeyPress(event)" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Palette Modal -->
+    <div id="command-palette" class="command-palette" style="display: none;">
+        <div class="command-palette-overlay" onclick="closeCommandPalette()"></div>
+        <div class="command-palette-container">
+            <div class="command-palette-header">
+                <span>🔍 Command Palette</span>
+                <button onclick="closeCommandPalette()" title="Close (Esc)">×</button>
+            </div>
+            <input type="text" id="command-palette-input" class="command-palette-input" placeholder="Type a command or search..." autocomplete="off">
+            <div id="command-palette-results" class="command-palette-results">
+                <!-- Commands will be populated here -->
+            </div>
+            <div class="command-palette-footer">
+                <span>↑↓ Navigate • Enter Select • Esc Close</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Menu Modal -->
+    <div id="help-menu-modal" class="help-menu-modal" style="display: none;">
+        <div class="help-menu-overlay" onclick="closeHelpMenu()"></div>
+        <div class="help-menu-container">
+            <div class="help-menu-header">
+                <span>📚 Help & Documentation</span>
+                <button onclick="closeHelpMenu()" title="Close (Esc)">×</button>
+            </div>
+            <div class="help-menu-content">
+                <div class="help-menu-tabs">
+                    <button class="help-tab active" onclick="switchHelpTab('welcome')">Welcome</button>
+                    <button class="help-tab" onclick="switchHelpTab('shortcuts')">Keyboard Shortcuts</button>
+                    <button class="help-tab" onclick="switchHelpTab('docs')">Documentation</button>
+                    <button class="help-tab" onclick="switchHelpTab('tips')">Tips & Tricks</button>
+                    <button class="help-tab" onclick="switchHelpTab('about')">About</button>
+                </div>
+                <div class="help-menu-body">
+                    <div id="help-welcome" class="help-tab-content active">
+                        <h2>🚀 Welcome to Auto_Punch IDE</h2>
+                        <p>Your powerful VS Code + Cursor clone with AI assistance and RedTeam tools.</p>
+                        <div class="help-section">
+                            <h3>Quick Start</h3>
+                            <ul>
+                                <li><strong>Open Command Palette:</strong> Press <kbd>Ctrl+Shift+P</kbd></li>
+                                <li><strong>Toggle Terminal:</strong> Press <kbd>Ctrl+`</kbd></li>
+                                <li><strong>Save File:</strong> Press <kbd>Ctrl+S</kbd></li>
+                                <li><strong>Open File:</strong> Press <kbd>Ctrl+O</kbd></li>
+                                <li><strong>New File:</strong> Press <kbd>Ctrl+N</kbd></li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>Features</h3>
+                            <ul>
+                                <li>🤖 <strong>Auto_Punch AI Assistant</strong> - Full unrestricted AI capabilities</li>
+                                <li>🔧 <strong>RedTeam Toolkit</strong> - Security tools integration</li>
+                                <li>📝 <strong>Monaco Editor</strong> - VS Code-like editing experience</li>
+                                <li>🌐 <strong>Browser Preview</strong> - Preview web pages</li>
+                                <li>🔐 <strong>SSH Connections</strong> - Remote server management</li>
+                                <li>📦 <strong>Extensions</strong> - Extend functionality</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>Getting Started</h3>
+                            <ol>
+                                <li>Open a workspace folder using the File Explorer</li>
+                                <li>Start coding with full AI assistance</li>
+                                <li>Use the Command Palette for quick actions</li>
+                                <li>Explore the RedTeam Toolkit for security tools</li>
+                            </ol>
+                        </div>
+                    </div>
+                    <div id="help-shortcuts" class="help-tab-content">
+                        <h2>⌨️ Keyboard Shortcuts</h2>
+                        <div class="shortcuts-grid">
+                            <div class="shortcut-category">
+                                <h3>General</h3>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+Shift+P</span>
+                                    <span class="shortcut-desc">Command Palette</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+K Ctrl+S</span>
+                                    <span class="shortcut-desc">Keyboard Shortcuts</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+,</span>
+                                    <span class="shortcut-desc">Open Settings</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+`</span>
+                                    <span class="shortcut-desc">Toggle Terminal</span>
+                                </div>
+                            </div>
+                            <div class="shortcut-category">
+                                <h3>File Operations</h3>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+N</span>
+                                    <span class="shortcut-desc">New File</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+O</span>
+                                    <span class="shortcut-desc">Open File</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+S</span>
+                                    <span class="shortcut-desc">Save File</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+W</span>
+                                    <span class="shortcut-desc">Close Tab</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+K W</span>
+                                    <span class="shortcut-desc">Close All Tabs</span>
+                                </div>
+                            </div>
+                            <div class="shortcut-category">
+                                <h3>Editor</h3>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+F</span>
+                                    <span class="shortcut-desc">Find</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+H</span>
+                                    <span class="shortcut-desc">Replace</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+/</span>
+                                    <span class="shortcut-desc">Toggle Comment</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Alt+↑/↓</span>
+                                    <span class="shortcut-desc">Move Line Up/Down</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+D</span>
+                                    <span class="shortcut-desc">Add Selection to Next Find Match</span>
+                                </div>
+                            </div>
+                            <div class="shortcut-category">
+                                <h3>View</h3>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+B</span>
+                                    <span class="shortcut-desc">Toggle Sidebar</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+J</span>
+                                    <span class="shortcut-desc">Toggle Panel</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">F11</span>
+                                    <span class="shortcut-desc">Toggle Fullscreen</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+1</span>
+                                    <span class="shortcut-desc">Focus Editor</span>
+                                </div>
+                            </div>
+                            <div class="shortcut-category">
+                                <h3>AI & Tools</h3>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+Shift+A</span>
+                                    <span class="shortcut-desc">Open AI Assistant</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+Shift+T</span>
+                                    <span class="shortcut-desc">Open RedTeam Toolkit</span>
+                                </div>
+                                <div class="shortcut-item">
+                                    <span class="shortcut-key">Ctrl+Shift+B</span>
+                                    <span class="shortcut-desc">Open Browser Preview</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="help-docs" class="help-tab-content">
+                        <h2>📖 Documentation</h2>
+                        <div class="help-section">
+                            <h3>Core Features</h3>
+                            <ul>
+                                <li><strong>Monaco Editor:</strong> Full-featured code editor with syntax highlighting, IntelliSense, and more</li>
+                                <li><strong>File Explorer:</strong> Navigate and manage your workspace files</li>
+                                <li><strong>Terminal:</strong> Integrated terminal with support for PowerShell, CMD, and Bash</li>
+                                <li><strong>Git Integration:</strong> Source control with Git commands</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>AI Features</h3>
+                            <ul>
+                                <li><strong>HacxGPT:</strong> Full unrestricted AI model for any task</li>
+                                <li><strong>Natural Language Automation:</strong> Execute commands using natural language</li>
+                                <li><strong>Terminal Automation:</strong> AI-powered terminal command execution</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>RedTeam Toolkit</h3>
+                            <ul>
+                                <li><strong>Security Tools:</strong> Nmap, Burp Suite, and more</li>
+                                <li><strong>Tool Categories:</strong> Network scanning, web testing, exploitation, and more</li>
+                                <li><strong>Quick Access:</strong> Launch tools directly from the IDE</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>Extensions</h3>
+                            <ul>
+                                <li>Install extensions from the marketplace</li>
+                                <li>Manage installed extensions</li>
+                                <li>Enable/disable extensions as needed</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="help-tips" class="help-tab-content">
+                        <h2>💡 Tips & Tricks</h2>
+                        <div class="help-section">
+                            <h3>Productivity Tips</h3>
+                            <ul>
+                                <li>Use <kbd>Ctrl+Shift+P</kbd> to quickly access any command</li>
+                                <li>Press <kbd>Ctrl+P</kbd> to quickly open files by name</li>
+                                <li>Use multiple cursors with <kbd>Alt+Click</kbd> or <kbd>Ctrl+D</kbd></li>
+                                <li>Format code with <kbd>Shift+Alt+F</kbd></li>
+                                <li>Use the Command Palette to search for settings</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>AI Assistant Tips</h3>
+                            <ul>
+                                <li>Ask the AI to explain code, write functions, or debug issues</li>
+                                <li>Use natural language to describe what you want to accomplish</li>
+                                <li>The AI can execute terminal commands and manage files</li>
+                                <li>Enable auto-execution for faster workflow</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>Customization</h3>
+                            <ul>
+                                <li>Change themes in Settings → Appearance</li>
+                                <li>Adjust font size and editor preferences</li>
+                                <li>Configure terminal shell and settings</li>
+                                <li>Customize keyboard shortcuts (coming soon)</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="help-about" class="help-tab-content">
+                        <h2>ℹ️ About Auto_Punch IDE</h2>
+                        <div class="help-section">
+                            <h3>Version Information</h3>
+                            <p><strong>Auto_Punch IDE</strong> - VS Code + Cursor Clone</p>
+                            <p>Powered by <strong>Auto_Punch Ai</strong></p>
+                            <p>Version: <strong>1.0.0</strong></p>
+                        </div>
+                        <div class="help-section">
+                            <h3>Features</h3>
+                            <ul>
+                                <li>✅ Monaco Editor Integration</li>
+                                <li>✅ Auto_Punch AI Assistant (Full Unrestricted)</li>
+                                <li>✅ RedTeam Toolkit Integration</li>
+                                <li>✅ Git Source Control</li>
+                                <li>✅ Terminal Integration</li>
+                                <li>✅ Browser Preview</li>
+                                <li>✅ SSH Connections</li>
+                                <li>✅ Extensions Marketplace</li>
+                                <li>✅ Multiple Themes</li>
+                                <li>✅ Command Palette</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>Credits</h3>
+                            <p>Built with ❤️ using:</p>
+                            <ul>
+                                <li>Monaco Editor by Microsoft</li>
+                                <li>Flask Web Framework</li>
+                                <li>Socket.IO for real-time communication</li>
+                                <li>Auto_Punch Ai for AI capabilities</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h3>License</h3>
+                            <p>Auto_Punch IDE - Proprietary Software</p>
+                            <p>© 2025 Auto_Punch Ai. All rights reserved.</p>
+                        </div>
                     </div>
                 </div>
             </div>

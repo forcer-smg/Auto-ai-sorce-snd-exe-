@@ -1,0 +1,40 @@
+═══════════════════════════════════════════════════════════════
+  HOW TO BUILD - STEP BY STEP
+═══════════════════════════════════════════════════════════════
+
+PROBLEM: You're in wrong directory or npm not in PATH
+
+SOLUTION 1 (Easiest - Double-click):
+  1. Open File Explorer
+  2. Go to: C:\Users\Administrator\Auto_Punch IDE
+  3. Double-click: BUILD.bat
+  Done!
+
+SOLUTION 2 (From Any Directory):
+  1. Double-click: C:\Users\Administrator\BUILD_AUTO_PUNCH.bat
+  (This file is in your home directory)
+  Done!
+
+SOLUTION 3 (Manual - Step by Step):
+
+  Step 1: Change to project directory
+  cd "C:\Users\Administrator\Auto_Punch IDE"
+
+  Step 2: Find npm (if not in PATH)
+  & "C:\Program Files\nodejs\npm.cmd" run build:exe
+
+  OR if npm is in PATH:
+  npm run build:exe
+
+═══════════════════════════════════════════════════════════════
+
+QUICK FIX FOR PATH ISSUE:
+
+  In PowerShell, run:
+  $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+  cd "C:\Users\Administrator\Auto_Punch IDE"
+  npm run build:exe
+
+═══════════════════════════════════════════════════════════════
+
+

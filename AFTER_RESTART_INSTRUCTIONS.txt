@@ -1,0 +1,44 @@
+═══════════════════════════════════════════════════════════════
+  AFTER RESTART - WHAT TO DO
+═══════════════════════════════════════════════════════════════
+
+STEP 1: RESTART YOUR PC
+  - Close all programs
+  - Restart Windows
+  - Wait for full startup
+
+STEP 2: AFTER RESTART
+
+  Option A (Easiest):
+    1. Open File Explorer
+    2. Go to: C:\Users\Administrator
+    3. Double-click: AFTER_RESTART.bat
+    Done!
+
+  Option B (From Project Folder):
+    1. Open File Explorer
+    2. Go to: C:\Users\Administrator\Auto_Punch IDE
+    3. Double-click: BUILD_ROBUST.bat
+    Done!
+
+  Option C (Manual):
+    1. Open PowerShell or CMD
+    2. Run:
+       cd "C:\Users\Administrator\Auto_Punch IDE"
+       npm run build:exe
+
+═══════════════════════════════════════════════════════════════
+
+WHY RESTART HELPS:
+  - Refreshes PATH environment variable
+  - Clears stuck processes
+  - Resets terminal state
+  - Fixes Node.js/npm detection issues
+
+═══════════════════════════════════════════════════════════════
+
+AFTER RESTART, THE BUILD SHOULD WORK!
+
+═══════════════════════════════════════════════════════════════
+
+

@@ -213,16 +213,32 @@ class ExtensionManager:
             # Move extension content to final location
             # Find the actual extension root (where package.json is)
             ext_root = manifest_path.parent
+            
+            # Create final directory
+            final_dir.mkdir(parents=True, exist_ok=True)
+            
             if ext_root == temp_dir:
-                # package.json is at root, move everything
-                shutil.move(str(temp_dir), str(final_dir))
+                # package.json is at root, copy everything
+                for item in temp_dir.iterdir():
+                    if item.name != '__pycache__':
+                        if item.is_dir():
+                            shutil.copytree(str(item), str(final_dir / item.name), dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(str(item), str(final_dir / item.name))
             else:
-                # package.json is in a subdirectory, move that subdirectory
-                final_dir.mkdir(parents=True)
+                # package.json is in a subdirectory, copy that subdirectory's contents
                 for item in ext_root.iterdir():
-                    shutil.move(str(item), str(final_dir / item.name))
-                # Cleanup temp
+                    if item.name != '__pycache__':
+                        if item.is_dir():
+                            shutil.copytree(str(item), str(final_dir / item.name), dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(str(item), str(final_dir / item.name))
+            
+            # Cleanup temp directory
+            try:
                 shutil.rmtree(temp_dir)
+            except:
+                pass
             
             # Load extension
             self.extensions[ext_id] = {

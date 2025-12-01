@@ -23,6 +23,14 @@ wheels/
 .installed.cfg
 *.egg
 
+# Electron
+node_modules/
+dist/
+out/
+*.log
+.npm
+.electron-gyp
+
 # IDE
 .vscode/
 .idea/
@@ -35,23 +43,28 @@ wheels/
 Thumbs.db
 desktop.ini
 
-# Logs
-*.log
-logs/
-
-# Environment variables
+# Environment
 .env
 .env.local
 
-# Temporary files
+# Build artifacts (but allow releases folder)
+*.exe
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+
+# Allow releases folder
+!releases/
+!releases/**/*.exe
+
+# Backup
+*-BACKUP/
+BACKUP/
+
+# Temporary
+tmp/
+temp/
 *.tmp
-*.temp
-*.bak
-*.backup
-
-# Node modules (if any)
-node_modules/
-
-# Auto_Punch Ai (external dependency)
-# Don't commit the Auto_Punch Ai folder if it's a separate repo
-

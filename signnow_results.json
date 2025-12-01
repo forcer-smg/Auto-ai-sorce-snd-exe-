@@ -1,0 +1,41 @@
+{
+  "valid": [],
+  "invalid": [
+    {
+      "email": "bailaconmicho@gmail.com",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:19:53.867277"
+    },
+    {
+      "email": "ebaig6@gmail.com",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:19:55.031472"
+    },
+    {
+      "email": "gg705494@gmail.com",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:19:56.202444"
+    },
+    {
+      "email": "dFpmaKa@telefonica.net",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:19:57.356565"
+    },
+    {
+      "email": "muhammadxaty200@gmail.com",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:19:58.548508"
+    },
+    {
+      "email": "fairuzkhansa9@gmail.com",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:19:59.864986"
+    },
+    {
+      "email": "shivams@lancesoft.com",
+      "message": "HTTP 404",
+      "timestamp": "2025-11-30T05:20:01.033422"
+    }
+  ],
+  "errors": []
+}

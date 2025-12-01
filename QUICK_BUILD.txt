@@ -1,0 +1,31 @@
+═══════════════════════════════════════════════════════════════
+  QUICK BUILD - Copy and Paste
+═══════════════════════════════════════════════════════════════
+
+OPTION 1 (Easiest - Batch File):
+  .\build-simple.bat
+
+OPTION 2 (PowerShell - Simple):
+  .\build-direct.ps1
+
+OPTION 3 (Manual - Direct):
+  npm run build:exe
+
+OPTION 4 (CMD - No PowerShell):
+  cd "C:\Users\Administrator\Auto_Punch IDE"
+  npm run build:exe
+
+OPTION 5 (Full Path - If PATH issues):
+  & "C:\Program Files\nodejs\npm.cmd" run build:exe
+
+═══════════════════════════════════════════════════════════════
+
+After build, check:
+  dir dist\*.exe
+
+Should show:
+  Auto_Punch IDE Setup 1.0.0.exe
+
+═══════════════════════════════════════════════════════════════
+
+

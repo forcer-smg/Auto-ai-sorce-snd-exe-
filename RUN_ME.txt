@@ -1,0 +1,20 @@
+═══════════════════════════════════════════════════════════════
+  QUICK START - RUN THIS
+═══════════════════════════════════════════════════════════════
+
+OPTION 1 (Easiest - Double-click):
+  RUN_ALL.bat
+
+OPTION 2 (PowerShell):
+  .\RUN_ALL.bat
+
+OPTION 3 (PowerShell script):
+  .\auto-run-all.ps1
+
+═══════════════════════════════════════════════════════════════
+
+The batch file is running now in the background!
+
+═══════════════════════════════════════════════════════════════
+
+

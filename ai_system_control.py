@@ -202,4 +202,34 @@ class AISystemControl:
             return response.json()
         except Exception as e:
             return {'success': False, 'error': f'Browser script execution failed: {str(e)}'}
+    
+    def redteam_tool_execute(self, tool_name: str, tool_path: str = None, arguments: list = None, working_dir: str = None):
+        """Execute a RedTeam tool - AI has FULL CONTROL"""
+        return {
+            'action': 'redteam_tool_execute',
+            'params': {
+                'tool_name': tool_name,
+                'tool_path': tool_path,
+                'arguments': arguments or [],
+                'working_dir': working_dir
+            }
+        }
+    
+    def redteam_tool_install(self, tool_name: str, tool_url: str = None, install_commands: list = None):
+        """Install a RedTeam tool - AI has FULL CONTROL"""
+        return {
+            'action': 'redteam_tool_install',
+            'params': {
+                'tool_name': tool_name,
+                'tool_url': tool_url,
+                'install_commands': install_commands or []
+            }
+        }
+    
+    def redteam_tool_list(self, category: str = None):
+        """List available RedTeam tools"""
+        return {
+            'action': 'redteam_tool_list',
+            'params': {'category': category}
+        }
 

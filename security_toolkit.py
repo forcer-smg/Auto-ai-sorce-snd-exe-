@@ -138,11 +138,12 @@ class NmapScanner:
     """Nmap integration with full AI control"""
     
     def __init__(self):
-        self.nmap_available = self._check_nmap_installed()
         self.nmap_path = self._find_nmap_path()
+        self.nmap_available = self.nmap_path is not None
     
     def _check_nmap_installed(self) -> bool:
         """Check if Nmap is installed"""
+        # First check if nmap command works
         try:
             result = subprocess.run(
                 ['nmap', '--version'],
@@ -150,16 +151,40 @@ class NmapScanner:
                 text=True,
                 timeout=5
             )
-            return result.returncode == 0
+            if result.returncode == 0:
+                return True
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
+            pass
+        
+        # If command doesn't work, check common Windows paths
+        if platform.system() == 'Windows':
+            common_paths = [
+                r'C:\Program Files (x86)\Nmap\nmap.exe',
+                r'C:\Program Files\Nmap\nmap.exe',
+                r'C:\Nmap\nmap.exe',
+            ]
+            for path in common_paths:
+                if os.path.exists(path):
+                    return True
+        
+        return False
     
     def _find_nmap_path(self) -> Optional[str]:
         """Find Nmap installation path"""
-        if self.nmap_available:
-            return 'nmap'
+        # First check if nmap command works
+        try:
+            result = subprocess.run(
+                ['nmap', '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return 'nmap'
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
         
-        # Common Windows installation paths
+        # If command doesn't work, check common Windows paths
         if platform.system() == 'Windows':
             common_paths = [
                 r'C:\Program Files (x86)\Nmap\nmap.exe',
@@ -268,21 +293,55 @@ class BurpSuiteIntegration:
     def _find_burp_path(self) -> Optional[str]:
         """Find Burp Suite installation path"""
         if platform.system() == 'Windows':
+            # Check common installation paths
             common_paths = [
                 r'C:\Program Files\BurpSuiteCommunity\burpsuite_community.jar',
                 r'C:\Program Files (x86)\BurpSuiteCommunity\burpsuite_community.jar',
                 r'C:\BurpSuiteCommunity\burpsuite_community.jar',
                 os.path.expanduser(r'~\AppData\Local\Programs\BurpSuiteCommunity\burpsuite_community.jar'),
+                os.path.expanduser(r'~\AppData\Roaming\BurpSuiteCommunity\burpsuite_community.jar'),
+                os.path.expanduser(r'~\Downloads\burpsuite_community.jar'),
+                os.path.expanduser(r'~\Desktop\burpsuite_community.jar'),
             ]
             for path in common_paths:
                 if os.path.exists(path):
                     return path
+            
+            # Also check for Burp Suite executable launcher
+            launcher_paths = [
+                r'C:\Program Files\BurpSuiteCommunity\BurpSuiteCommunity.exe',
+                r'C:\Program Files (x86)\BurpSuiteCommunity\BurpSuiteCommunity.exe',
+            ]
+            for path in launcher_paths:
+                if os.path.exists(path):
+                    return path
+            
+            # Search in common program directories
+            program_dirs = [
+                r'C:\Program Files',
+                r'C:\Program Files (x86)',
+                os.path.expanduser(r'~\AppData\Local\Programs'),
+            ]
+            for base_dir in program_dirs:
+                if os.path.exists(base_dir):
+                    try:
+                        for item in os.listdir(base_dir):
+                            burp_dir = os.path.join(base_dir, item)
+                            if 'burp' in item.lower() and os.path.isdir(burp_dir):
+                                jar_path = os.path.join(burp_dir, 'burpsuite_community.jar')
+                                if os.path.exists(jar_path):
+                                    return jar_path
+                                exe_path = os.path.join(burp_dir, 'BurpSuiteCommunity.exe')
+                                if os.path.exists(exe_path):
+                                    return exe_path
+                    except (PermissionError, OSError):
+                        continue
         
-        # Check if Java is available
+        # Check if Java is available (required for Burp Suite)
         try:
             subprocess.run(['java', '-version'], capture_output=True, timeout=5)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            return None
+            pass  # Java check is separate, don't fail if Java not found
         
         return None
     
@@ -306,30 +365,35 @@ class BurpSuiteIntegration:
                 'error': 'Burp Suite installation not found'
             }
         
-        # Check Java
-        try:
-            java_check = subprocess.run(
-                ['java', '-version'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if java_check.returncode != 0:
+        # Build command based on file type
+        if self.burp_path.endswith('.exe'):
+            # Executable launcher - run directly
+            cmd = [self.burp_path]
+            if project_file and os.path.exists(project_file):
+                cmd.extend(['--project-file', project_file])
+        else:
+            # JAR file - requires Java
+            try:
+                java_check = subprocess.run(
+                    ['java', '-version'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if java_check.returncode != 0:
+                    return {
+                        'success': False,
+                        'error': 'Java is required to run Burp Suite. Please install Java first.'
+                    }
+            except FileNotFoundError:
                 return {
                     'success': False,
-                    'error': 'Java is required to run Burp Suite. Please install Java first.'
+                    'error': 'Java is not installed. Please install Java to run Burp Suite.'
                 }
-        except FileNotFoundError:
-            return {
-                'success': False,
-                'error': 'Java is not installed. Please install Java to run Burp Suite.'
-            }
-        
-        # Build command
-        cmd = ['java', '-jar', self.burp_path]
-        
-        if project_file and os.path.exists(project_file):
-            cmd.extend(['--project-file', project_file])
+            
+            cmd = ['java', '-jar', self.burp_path]
+            if project_file and os.path.exists(project_file):
+                cmd.extend(['--project-file', project_file])
         
         try:
             if headless:

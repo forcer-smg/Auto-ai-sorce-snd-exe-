@@ -1,0 +1,27 @@
+═══════════════════════════════════════════════════════════════
+  Auto_Punch IDE - COMPLETE SETUP
+═══════════════════════════════════════════════════════════════
+
+Run this command in PowerShell:
+
+    .\complete-all.ps1
+
+Or run these commands one by one:
+
+    npm install
+    npm run build:all
+
+═══════════════════════════════════════════════════════════════
+
+Time required: ~20-30 minutes
+
+What it does:
+  1. Installs npm dependencies (5-10 min)
+  2. Builds MSI installer (10-15 min)
+  3. Builds EXE installer (10-15 min)
+
+Output: Installers in dist\ folder
+
+═══════════════════════════════════════════════════════════════
+
+

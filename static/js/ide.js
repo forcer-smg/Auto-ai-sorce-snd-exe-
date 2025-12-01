@@ -8,15 +8,158 @@ let currentSessionId = null;
 let activeProgressUpdates = {}; // Track active progress updates
 let fileExplorationCount = 0;
 
+// AI Streaming state (global for persistence)
+let currentStreamingMessage = '';
+let streamingMessageId = null;
+
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing IDE...');
     
+    // Initialize Socket.IO early (but wait for library to load)
+    // Socket.IO script is loaded dynamically, check for it
+    function initSocketWhenReady() {
+        // Check multiple ways Socket.IO might be available
+        let ioAvailable = false;
+        let ioSource = '';
+        
+        if (typeof io !== 'undefined') {
+            ioAvailable = true;
+            ioSource = 'global io';
+        } else if (typeof window.io !== 'undefined') {
+            ioAvailable = true;
+            ioSource = 'window.io';
+        } else if (window.io && typeof window.io === 'function') {
+            ioAvailable = true;
+            ioSource = 'window.io function';
+        }
+        
+        if (ioAvailable) {
+            console.log('[INIT] ✅ Socket.IO library found, initializing...');
+            console.log('[INIT] io source:', ioSource);
+            initOtherComponents();
+            return true;
+        }
+        return false;
+    }
+    
+    // Try to load Socket.IO if it failed from CDN
+    function loadSocketIOFallback() {
+        console.log('[INIT] Attempting to load Socket.IO from alternative CDN...');
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js';
+        script.onload = function() {
+            console.log('[INIT] Socket.IO loaded from fallback CDN');
+            // Wait a bit for io to be available
+            setTimeout(() => {
+                if (typeof io !== 'undefined' || typeof window.io !== 'undefined') {
+                    initOtherComponents();
+                } else {
+                    console.error('[INIT] Socket.IO script loaded but io variable not available');
+                }
+            }, 100);
+        };
+        script.onerror = function() {
+            console.error('[INIT] Failed to load Socket.IO from fallback CDN as well');
+            console.error('[INIT] Socket.IO is required for real-time features');
+            // Show user-friendly message
+            const errorMsg = document.createElement('div');
+            errorMsg.style.cssText = 'position: fixed; top: 10px; right: 10px; background: #f48771; color: white; padding: 15px; border-radius: 4px; z-index: 10000; max-width: 300px;';
+            errorMsg.innerHTML = '<strong>⚠️ Connection Warning</strong><br>Socket.IO failed to load. Real-time features may not work. Please check your internet connection.';
+            document.body.appendChild(errorMsg);
+            setTimeout(() => errorMsg.remove(), 10000);
+        };
+        document.head.appendChild(script);
+    }
+    
+    // Listen for socketio-loaded event
+    window.addEventListener('socketio-loaded', function() {
+        console.log('[INIT] Received socketio-loaded event');
+        if (initSocketWhenReady()) {
+            console.log('[INIT] Socket.IO initialized from event');
+        }
+    });
+    
+    // Wait for socketIOLoaded flag or check for io variable
+    function waitForSocketIO() {
+        // Try immediately
+        if (initSocketWhenReady()) {
+            return;
+        }
+        
+        // Check if script reported it loaded
+        if (window.socketIOLoaded) {
+            // Give it a moment to set the io variable
+            setTimeout(() => {
+                if (initSocketWhenReady()) {
+                    console.log('[INIT] Socket.IO initialized after socketIOLoaded flag');
+                    return;
+                }
+            }, 200);
+        }
+        
+        // Wait for Socket.IO to load (script loads asynchronously)
+        let attempts = 0;
+        const maxAttempts = 100; // 10 seconds (increased timeout)
+        const checkSocketIO = setInterval(() => {
+            attempts++;
+            if (initSocketWhenReady()) {
+                clearInterval(checkSocketIO);
+                console.log('[INIT] Socket.IO library loaded after', attempts * 100, 'ms');
+            } else if (attempts >= maxAttempts) {
+                // 10 seconds timeout
+                clearInterval(checkSocketIO);
+                console.error('[INIT] Socket.IO library failed to load after 10 seconds');
+                console.error('[INIT] Check if https://cdn.socket.io/4.5.4/socket.io.min.js is accessible');
+                console.error('[INIT] Current io:', typeof io, 'window.io:', typeof window.io);
+                console.error('[INIT] socketIOLoaded flag:', window.socketIOLoaded);
+                console.error('[INIT] socketIOFailed flag:', window.socketIOFailed);
+                
+                // Check if script failed to load
+                if (window.socketIOFailed) {
+                    console.log('[INIT] Socket.IO CDN load failed, trying fallback...');
+                    loadSocketIOFallback();
+                } else if (window.socketIOLoaded) {
+                    // Script loaded but io not available - might be a timing issue
+                    console.log('[INIT] Script loaded but io not available, waiting a bit more...');
+                    setTimeout(() => {
+                        if (initSocketWhenReady()) {
+                            console.log('[INIT] Socket.IO available after extended wait');
+                        } else {
+                            console.error('[INIT] Socket.IO still not available, trying fallback...');
+                            loadSocketIOFallback();
+                        }
+                    }, 2000);
+                } else {
+                    // Try one more time on window load
+                    window.addEventListener('load', () => {
+                        if (initSocketWhenReady()) {
+                            console.log('[INIT] Socket.IO loaded on window.load event');
+                        } else {
+                            console.log('[INIT] Socket.IO still not loaded, trying fallback...');
+                            loadSocketIOFallback();
+                        }
+                    });
+                }
+            }
+        }, 100);
+    }
+    
+    // Start waiting for Socket.IO
+    waitForSocketIO();
+    
     // Initialize Monaco Editor with better error handling
+    // Fix MIME type issue by disabling NLS (localization)
     if (typeof require !== 'undefined') {
         require.config({ 
             paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
-            'vs/nls': { availableLanguages: { '*': 'en' } }
+            'vs/nls': { 
+                availableLanguages: { '*': 'en' },
+                // Disable NLS to avoid MIME type issues
+                load: function(name, req, onload, config) {
+                    onload({});
+                }
+            }
         });
         require(['vs/editor/editor.main'], function () {
             console.log('Monaco Editor loaded, initializing...');
@@ -37,12 +180,24 @@ function loadMonacoEditorDirect() {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
     script.onload = function() {
-        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+        require.config({ 
+            paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
+            'vs/nls': { 
+                availableLanguages: { '*': 'en' },
+                // Disable NLS to avoid MIME type issues
+                load: function(name, req, onload, config) {
+                    onload({});
+                }
+            }
+        });
         require(['vs/editor/editor.main'], function() {
             console.log('Monaco Editor loaded via direct script');
             setTimeout(() => {
                 initMonacoEditor();
             }, 100);
+        }, function(err) {
+            console.error('Monaco Editor require error:', err);
+            loadMonacoEditorFallback();
         });
     };
     script.onerror = function() {
@@ -97,7 +252,7 @@ function initMonacoEditor() {
 //  ██║  ██║██║  ██║╚██████╗██║  ██╗██║██║ ╚████║╚██████╗          ██║██║╚██████╔╝██████╔╝███████╗██████╔╝
 //  ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝          ╚═╝╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═════╝ 
 // ═══════════════════════════════════════════════════════════════
-//  🔥 WELCOME TO HACKING WORLD 🔥
+//  🔥 HACK OR DIE 🔥
 // ═══════════════════════════════════════════════════════════════
 //  ⚡ Powered by Auto_Punch Ai ⚡
 //  👤 Author: SMG...
@@ -121,6 +276,9 @@ console.log("Hello, World!");`,
         });
         
         console.log('Monaco Editor created successfully!');
+        
+        // Initialize breakpoints after editor is created
+        setTimeout(initBreakpoints, 500);
 
         editor.onDidChangeCursorPosition((e) => {
             const position = e.position;
@@ -159,9 +317,6 @@ console.log("Hello, World!");`,
         }, 200);
         
         console.log('Monaco Editor initialized successfully');
-        
-        // Initialize other components
-        initOtherComponents();
     } catch (error) {
         console.error('Error initializing Monaco Editor:', error);
         // Show fallback message
@@ -186,16 +341,60 @@ function loadMonacoEditor() {
 }
 
 function initOtherComponents() {
-    // Initialize Socket.IO
-    if (typeof io !== 'undefined') {
-        socket = io();
-        socket.on('connect', (data) => {
-            console.log('Connected to server');
-            if (data && data.session_id) {
-                currentSessionId = data.session_id;
+    // Wait for Socket.IO to be available
+    if (typeof io === 'undefined') {
+        console.warn('[SOCKET] Socket.IO library not loaded yet, waiting...');
+        // Retry after a short delay
+        setTimeout(() => {
+            if (typeof io !== 'undefined' && !socket) {
+                initOtherComponents();
             }
-        });
-
+        }, 500);
+        return;
+    }
+    
+    // Initialize Socket.IO with connection options (only once)
+    if (!socket) {
+        console.log('[SOCKET] Initializing Socket.IO connection...');
+        try {
+            socket = io({
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                timeout: 20000
+            });
+            
+            socket.on('connect', (data) => {
+                console.log('[SOCKET] ✅ Connected to server');
+                console.log('[SOCKET] Socket ID:', socket.id);
+                if (data && data.session_id) {
+                    currentSessionId = data.session_id;
+                }
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('[SOCKET] ❌ Connection error:', error);
+                console.error('[SOCKET] Error details:', error.message || error);
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.warn('[SOCKET] ⚠️ Disconnected:', reason);
+            });
+            
+            socket.on('reconnect', (attemptNumber) => {
+                console.log('[SOCKET] 🔄 Reconnected after', attemptNumber, 'attempts');
+            });
+            
+            socket.on('reconnect_attempt', (attemptNumber) => {
+                console.log('[SOCKET] 🔄 Reconnection attempt', attemptNumber);
+            });
+            
+            socket.on('reconnect_failed', () => {
+                console.error('[SOCKET] ❌ Reconnection failed');
+            });
+        
+        // Set up all socket event listeners
         socket.on('connected', (data) => {
             if (data && data.session_id) {
                 currentSessionId = data.session_id;
@@ -209,22 +408,42 @@ function initOtherComponents() {
 
         // Handle file creation from AI
         socket.on('open_file_in_editor', (data) => {
-            console.log('Received open_file_in_editor event:', data);
-            if (data && data.path && data.content) {
+            console.log('📂 Received open_file_in_editor event:', data);
+            if (data && data.path && data.content !== undefined) {
+                // Use relative path if provided, otherwise use full path
+                const filePath = data.relative_path || data.path;
+                console.log('📂 Opening file:', filePath);
                 openFileInEditor(data.path, data.content, data.language);
+                
+                // Show notification
+                const statusText = document.getElementById('terminal-status-text');
+                if (statusText) {
+                    const fileName = filePath.split(/[/\\]/).pop();
+                    statusText.textContent = `✅ File opened: ${fileName}`;
+                    statusText.style.color = '#4ec9b0';
+                    setTimeout(() => {
+                        statusText.textContent = '';
+                    }, 3000);
+                }
+            } else {
+                console.warn('⚠️ Invalid open_file_in_editor data:', data);
             }
         });
 
         // Show terminal panel when commands are executed
         socket.on('show_terminal', (data) => {
+            console.log('[TERMINAL] show_terminal event received');
+            showTerminalPanel();
+        });
+        
+        // Force show terminal (for AI processing)
+        socket.on('force_show_terminal', (data) => {
+            console.log('[TERMINAL] force_show_terminal event received');
             const terminalPanel = document.getElementById('terminal-panel');
             if (terminalPanel) {
                 terminalPanel.style.display = 'flex';
-                // Switch to terminal tab
-                const terminalTab = document.querySelector('.terminal-tab[data-tab="terminal"]');
-                if (terminalTab) {
-                    terminalTab.click();
-                }
+                terminalPanel.style.visibility = 'visible';
+                terminalPanel.style.opacity = '1';
                 // Scroll terminal to bottom
                 setTimeout(() => {
                     const terminalOutput = document.getElementById('terminal-output');
@@ -280,8 +499,147 @@ function initOtherComponents() {
                 }
             }
         });
+
+        // AI Streaming Events
+        socket.on('ai_stream_start', (data) => {
+            console.log('[STREAM] AI stream started', data);
+            // Remove typing indicator
+            const typingMessages = document.querySelectorAll('.chat-message.ai');
+            typingMessages.forEach(msg => {
+                if (msg.textContent.includes('🤖 Thinking...') || msg.textContent.includes('💭')) {
+                    msg.remove();
+                }
+            });
+            // Create new message for streaming
+            streamingMessageId = 'stream-' + Date.now();
+            currentStreamingMessage = '';
+            const messagesContainer = document.getElementById('chat-messages');
+            if (messagesContainer) {
+                const messageDiv = document.createElement('div');
+                messageDiv.id = streamingMessageId;
+                messageDiv.className = 'chat-message ai streaming';
+                messageDiv.innerHTML = '<span class="typing-indicator">💭</span><span class="stream-content"></span>';
+                messagesContainer.appendChild(messageDiv);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                console.log('[STREAM] Created streaming message container:', streamingMessageId);
+            }
+        });
+        
+        socket.on('ai_stream_chunk', (data) => {
+            // Only log every 10th chunk to avoid console spam
+            if (data.chunk_count % 10 === 0) {
+                console.log('[STREAM] Received chunk:', data.chunk_count, 'chars:', data.chunk?.length);
+            }
+            
+            if (streamingMessageId && data.chunk) {
+                currentStreamingMessage += data.chunk;
+                const messageDiv = document.getElementById(streamingMessageId);
+                if (messageDiv) {
+                    const contentSpan = messageDiv.querySelector('.stream-content');
+                    if (contentSpan) {
+                        // Update immediately (no delay for real-time feel)
+                        contentSpan.textContent = currentStreamingMessage;
+                        
+                        // Auto-scroll to bottom
+                        const messagesContainer = document.getElementById('chat-messages');
+                        if (messagesContainer) {
+                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        }
+                    } else {
+                        if (data.chunk_count === 1) {
+                            console.warn('[STREAM] Content span not found in message div');
+                        }
+                    }
+                } else {
+                    if (data.chunk_count === 1) {
+                        console.warn('[STREAM] Message div not found:', streamingMessageId);
+                    }
+                }
+            } else {
+                if (data.chunk_count === 1) {
+                    console.warn('[STREAM] Missing streamingMessageId or chunk:', { 
+                        streamingMessageId, 
+                        hasChunk: !!data.chunk 
+                    });
+                }
+            }
+        });
+        
+        socket.on('ai_stream_end', (data) => {
+            console.log('[STREAM] ✅ AI stream ended', data);
+            if (streamingMessageId) {
+                const messageDiv = document.getElementById(streamingMessageId);
+                if (messageDiv) {
+                    // Remove typing indicator
+                    const typingIndicator = messageDiv.querySelector('.typing-indicator');
+                    if (typingIndicator) {
+                        typingIndicator.remove();
+                    }
+                    
+                    // Format final message with code highlighting
+                    const contentSpan = messageDiv.querySelector('.stream-content');
+                    if (contentSpan && currentStreamingMessage) {
+                        let formatted = currentStreamingMessage;
+                        // Highlight code blocks
+                        formatted = formatted.replace(
+                            /```(\w+)?\n([\s\S]+?)```/g,
+                            '<pre class="code-block"><code>$2</code></pre>'
+                        );
+                        // Highlight commands
+                        formatted = formatted.replace(
+                            /\[EXECUTE:\s*(.+?)\]/gi,
+                            '<span class="command-marker">🔧 EXECUTING: $1</span>'
+                        );
+                        contentSpan.innerHTML = formatted;
+                    }
+                    
+                    messageDiv.classList.remove('streaming');
+                    console.log('[STREAM] ✅ Finalized streaming message:', {
+                        chunks: data.total_chunks,
+                        length: data.total_length,
+                        messageLength: currentStreamingMessage.length
+                    });
+                    
+                    // Final scroll
+                    const messagesContainer = document.getElementById('chat-messages');
+                    if (messagesContainer) {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    }
+                } else {
+                    console.warn('[STREAM] Message div not found for finalization:', streamingMessageId);
+                }
+                streamingMessageId = null;
+                currentStreamingMessage = '';
+            } else {
+                console.warn('[STREAM] No streaming message ID when stream ended');
+            }
+        });
+
+        // Refresh file explorer when files are created
+        socket.on('refresh_file_explorer', (data) => {
+            console.log('🔄 Refreshing file explorer:', data);
+            if (data && data.workspace) {
+                // Reload file tree for the specific workspace
+                setTimeout(() => {
+                    console.log('🔄 Loading file tree for workspace:', data.workspace);
+                    loadFileTree(data.workspace);
+                }, 300); // Small delay to ensure file is written
+            } else {
+                // Fallback: refresh current workspace
+                setTimeout(() => {
+                    refreshExplorer();
+                }, 300);
+            }
+        });
+
+        } catch (error) {
+            console.error('[SOCKET] ❌ Failed to initialize socket:', error);
+            socket = null;
+        }
+    } else if (socket) {
+        console.log('[SOCKET] Already initialized, socket ID:', socket.id, 'connected:', socket.connected);
     } else {
-        console.warn('Socket.IO not loaded');
+        console.warn('[SOCKET] Socket already exists but may not be connected');
     }
 
     // Initialize Activity Bar
@@ -437,6 +795,8 @@ function switchView(viewName) {
             loadGitStatus();
         } else if (viewName === 'extensions') {
             loadExtensions();
+        } else if (viewName === 'ssh') {
+            loadSSHConnections();
         } else if (viewName === 'settings') {
             loadSettings();
         } else if (viewName === 'ai') {
@@ -464,6 +824,12 @@ async function loadWorkspace() {
 
 async function loadFileTree(path) {
     const treeElement = document.getElementById('file-tree');
+    if (!treeElement) {
+        console.error('[EXPLORER] File tree element not found');
+        return;
+    }
+    
+    console.log('[EXPLORER] 🔄 Loading file tree for:', path);
     treeElement.innerHTML = '<div class="loading">Loading...</div>';
     
     try {
@@ -500,8 +866,49 @@ function createFileTreeItem(item) {
 }
 
 function refreshExplorer() {
+    // Get current workspace or use default
     if (currentWorkspace) {
         loadFileTree(currentWorkspace);
+    } else {
+        // Load workspace first, then refresh
+        loadWorkspace().then(() => {
+            if (currentWorkspace) {
+                loadFileTree(currentWorkspace);
+            } else {
+                // Fallback: try to get workspace from API
+                fetch('/api/workspace/get')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success && data.path) {
+                            currentWorkspace = data.path;
+                            loadFileTree(currentWorkspace);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Failed to load workspace:', err);
+                    });
+            }
+        });
+    }
+}
+
+async function openWorkspaceFolder() {
+    try {
+        const response = await fetch('/api/workspace/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            // Also show in terminal
+            appendTerminalOutput(`\n📁 Opened folder: ${data.message || 'Workspace folder'}\n`);
+        } else {
+            alert('Error opening folder: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error opening folder:', error);
+        alert('Error opening folder: ' + error.message);
     }
 }
 
@@ -523,7 +930,21 @@ async function openFile(filePath) {
         if (data.content !== undefined) {
             addTab(filePath, data.content);
             const language = detectLanguage(filePath);
-            editor.setModel(monaco.editor.createModel(data.content, language, monaco.Uri.file(filePath)));
+            
+            // Check if model already exists before creating
+            const uri = monaco.Uri.file(filePath);
+            let model = monaco.editor.getModel(uri);
+            
+            if (!model) {
+                // Create new model only if it doesn't exist
+                model = monaco.editor.createModel(data.content, language, uri);
+            } else {
+                // Update existing model
+                model.setValue(data.content);
+                monaco.editor.setModelLanguage(model, language);
+            }
+            
+            editor.setModel(model);
             currentFiles[filePath] = {
                 path: filePath,
                 content: data.content,
@@ -568,57 +989,108 @@ function detectLanguage(filePath) {
 }
 
 // Tab Management
-// Open file in editor with content (for AI-generated files)
+// Open file in editor with content (for AI-generated files) - Cursor AI style
 function openFileInEditor(filePath, content, language) {
+    console.log('[EDITOR] 📂 Opening file in editor:', { filePath, language, contentLength: content?.length });
+    
+    if (!filePath || content === undefined) {
+        console.error('[EDITOR] ❌ Invalid parameters:', { filePath, hasContent: content !== undefined });
+        return;
+    }
+    
     // Store file content
     if (!currentFiles[filePath]) {
-        currentFiles[filePath] = { content: content, modified: false };
+        currentFiles[filePath] = { 
+            path: filePath,
+            content: content, 
+            modified: false,
+            language: language || detectLanguage(filePath)
+        };
+        console.log('[EDITOR] ✅ File added to currentFiles:', filePath);
     } else {
         currentFiles[filePath].content = content;
+        currentFiles[filePath].language = language || detectLanguage(filePath);
+        console.log('[EDITOR] ✅ File content updated:', filePath);
     }
     
-    // Add tab if not exists
+    // Add tab if not exists (Cursor AI style - auto-open in editor)
     const escapedPath = filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    if (!document.querySelector(`.tab[data-path="${escapedPath}"]`)) {
+    let tabExists = document.querySelector(`.tab[data-path="${escapedPath}"]`);
+    
+    if (!tabExists) {
+        console.log('[EDITOR] Creating new tab for:', filePath);
         addTab(filePath, content);
     } else {
-        // Update existing tab content
+        console.log('[EDITOR] Tab exists, switching to it:', filePath);
         switchToTab(filePath);
-        if (editor) {
-            editor.setValue(content);
-        }
     }
     
-    // Set language if provided
-    if (language && editor && editor.getModel()) {
-        const langMap = {
-            'python': 'python',
-            'js': 'javascript',
-            'javascript': 'javascript',
-            'html': 'html',
-            'css': 'css',
-            'json': 'json',
-            'xml': 'xml',
-            'yaml': 'yaml',
-            'md': 'markdown',
-            'markdown': 'markdown',
-            'sh': 'shell',
-            'bash': 'shell',
-            'powershell': 'powershell',
-            'cmd': 'bat'
-        };
-        const monacoLang = langMap[language.toLowerCase()] || language.toLowerCase();
+    // Set editor content and language (like Cursor AI)
+    if (editor) {
+        const finalLanguage = language || detectLanguage(filePath);
+        console.log('[EDITOR] Setting editor content, language:', finalLanguage);
+        
         try {
-            monaco.editor.setModelLanguage(editor.getModel(), monacoLang);
-        } catch (e) {
-            console.log('Language not supported:', monacoLang);
+            const uri = monaco.Uri.file(filePath);
+            let model = monaco.editor.getModel(uri);
+            
+            if (!model) {
+                // Create new model
+                model = monaco.editor.createModel(content, finalLanguage, uri);
+                console.log('[EDITOR] ✅ Created new Monaco model');
+            } else {
+                // Update existing model
+                model.setValue(content);
+                monaco.editor.setModelLanguage(model, finalLanguage);
+                console.log('[EDITOR] ✅ Updated existing Monaco model');
+            }
+            
+            // Set model in editor
+            editor.setModel(model);
+            
+            // Update language indicator
+            const langEl = document.querySelector('.editor-language');
+            if (langEl) {
+                langEl.textContent = finalLanguage || 'Plain Text';
+            }
+        } catch (error) {
+            console.error('[EDITOR] ❌ Error setting editor model:', error);
+            // Fallback: just set value
+            if (editor) {
+                editor.setValue(content);
+            }
         }
+    } else {
+        console.warn('[EDITOR] ⚠️ Editor not initialized yet, retrying...');
+        setTimeout(() => {
+            if (editor) {
+                openFileInEditor(filePath, content, language);
+            }
+        }, 500);
     }
     
-    // Switch to editor view
+    // Switch to editor view (like Cursor AI) - ensure file is visible
     setTimeout(() => {
+        // Make sure explorer view is active
         switchView('explorer');
-    }, 100);
+        
+        // Scroll file into view in file tree if possible
+        const fileName = filePath.split(/[/\\]/).pop();
+        const fileTreeItems = document.querySelectorAll('.file-tree-item');
+        for (const item of fileTreeItems) {
+            if (item.textContent.includes(fileName)) {
+                item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                // Highlight briefly (like Cursor AI)
+                item.style.backgroundColor = 'rgba(78, 201, 176, 0.2)';
+                setTimeout(() => {
+                    item.style.backgroundColor = '';
+                }, 2000);
+                break;
+            }
+        }
+    }, 200);
+    
+    console.log('[EDITOR] ✅ File opened successfully:', filePath);
     
     // Show notification
     const statusText = document.getElementById('terminal-status-text');
@@ -650,6 +1122,26 @@ function addTab(filePath, content) {
     switchToTab(filePath);
 }
 
+function createNewTab() {
+    let counter = 1;
+    let filePath = 'Untitled-' + counter;
+    while (currentFiles[filePath]) {
+        counter++;
+        filePath = 'Untitled-' + counter;
+    }
+    addTab(filePath, '');
+    currentFiles[filePath] = { content: '', modified: false };
+    openFileInEditor(filePath, '', 'plaintext');
+    return document.querySelector(`.tab[data-path="${filePath}"]`);
+}
+
+function openFileContent(fileName, content) {
+    const filePath = fileName;
+    addTab(filePath, content);
+    currentFiles[filePath] = { content: content, modified: false };
+    openFileInEditor(filePath, content);
+}
+
 function switchToTab(filePath) {
     document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.remove('active');
@@ -659,11 +1151,22 @@ function switchToTab(filePath) {
     });
     
     if (currentFiles[filePath]) {
-        const model = monaco.editor.createModel(
-            currentFiles[filePath].content,
-            detectLanguage(filePath),
-            monaco.Uri.file(filePath)
-        );
+        const uri = monaco.Uri.file(filePath);
+        let model = monaco.editor.getModel(uri);
+        
+        if (!model) {
+            // Create new model only if it doesn't exist
+            model = monaco.editor.createModel(
+                currentFiles[filePath].content,
+                detectLanguage(filePath),
+                uri
+            );
+        } else {
+            // Update existing model with current content
+            model.setValue(currentFiles[filePath].content);
+            monaco.editor.setModelLanguage(model, detectLanguage(filePath));
+        }
+        
         editor.setModel(model);
     }
 }
@@ -677,6 +1180,17 @@ function updateTab(filePath) {
 }
 
 async function closeTab(filePath) {
+    // Dispose of Monaco model when closing tab
+    try {
+        const uri = monaco.Uri.file(filePath);
+        const model = monaco.editor.getModel(uri);
+        if (model) {
+            model.dispose();
+            console.log('[EDITOR] Disposed model for:', filePath);
+        }
+    } catch (error) {
+        console.warn('[EDITOR] Error disposing model:', error);
+    }
     if (currentFiles[filePath] && currentFiles[filePath].modified) {
         if (!confirm('File has unsaved changes. Close anyway?')) {
             return;
@@ -848,6 +1362,42 @@ async function handleTerminalKeyPress(event) {
 }
 
 // Real-time progress handlers
+// Function to show terminal panel and scroll to bottom
+function showTerminalPanel() {
+    console.log('[TERMINAL] showTerminalPanel called');
+    const terminalPanel = document.getElementById('terminal-panel');
+    if (terminalPanel) {
+        console.log('[TERMINAL] Terminal panel found, showing...');
+        terminalPanel.style.display = 'flex';
+        terminalPanel.style.visibility = 'visible';
+        terminalPanel.style.opacity = '1';
+        terminalPanel.style.zIndex = '1000';  // Ensure it's on top
+        // Scroll terminal to bottom
+        setTimeout(() => {
+            const terminalOutput = document.getElementById('terminal-output');
+            if (terminalOutput) {
+                terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                console.log('[TERMINAL] Scrolled to bottom');
+            }
+        }, 100);
+        return true;
+    }
+    console.error('[TERMINAL] Terminal panel not found!');
+    return false;
+}
+
+// Click handler function for terminal status
+function showTerminalOnClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('[TERMINAL] Clicked on AI status - showing terminal');
+    if (showTerminalPanel()) {
+        console.log('[TERMINAL] Terminal panel shown successfully');
+    } else {
+        console.error('[TERMINAL] Failed to show terminal panel');
+    }
+}
+
 function handleAIProgress(message, data) {
     // Update progress in chat or status bar
     const progressId = 'progress-' + Date.now();
@@ -858,6 +1408,55 @@ function handleAIProgress(message, data) {
     if (statusText) {
         statusText.textContent = message;
         statusText.style.color = '#4ec9b0';
+        statusText.style.cursor = 'pointer';
+        statusText.title = 'Click to view AI processing in terminal';
+        
+        // Make clickable to show terminal - use both onclick and event listener
+        statusText.onclick = showTerminalOnClick;
+        try {
+            statusText.removeEventListener('click', showTerminalOnClick);
+        } catch (e) {
+            // Ignore if listener doesn't exist
+        }
+        statusText.addEventListener('click', showTerminalOnClick);
+        
+        const statusEl = document.getElementById('terminal-status');
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.style.cursor = 'pointer';
+            statusEl.title = 'Click to view AI processing in terminal';
+            statusEl.onclick = showTerminalOnClick;
+            try {
+                statusEl.removeEventListener('click', showTerminalOnClick);
+            } catch (e) {
+                // Ignore if listener doesn't exist
+            }
+            statusEl.addEventListener('click', showTerminalOnClick);
+        }
+    }
+    
+    // Also show in terminal if terminal is visible
+    const terminalOutput = document.getElementById('terminal-output');
+    if (terminalOutput && terminalOutput.offsetParent !== null) {
+        // Terminal is visible, add progress message
+        const progressLine = document.createElement('div');
+        progressLine.className = 'terminal-line';
+        progressLine.textContent = `[AI] ${message}`;
+        progressLine.style.color = '#4ec9b0';
+        terminalOutput.appendChild(progressLine);
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    }
+}
+
+// Click handler function for terminal status
+function showTerminalOnClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('[TERMINAL] Clicked on AI status - showing terminal');
+    if (showTerminalPanel()) {
+        console.log('[TERMINAL] Terminal panel shown');
+    } else {
+        console.error('[TERMINAL] Failed to show terminal panel');
     }
 }
 
@@ -977,7 +1576,198 @@ async function sendChatMessage() {
         statusText.style.color = '#4ec9b0';
     }
     
+    // Ensure socket is initialized and connected
+    if (typeof io === 'undefined') {
+        console.error('[CHAT] ❌ Socket.IO library not loaded');
+        removeChatMessage(typingId);
+        addChatMessage('ai', 'Error: Socket.IO library not loaded. Please refresh the page.');
+        return;
+    }
+    
+    if (!socket) {
+        console.warn('[CHAT] Socket not initialized, initializing...');
+        initOtherComponents();
+        // Wait for socket to be created
+        let attempts = 0;
+        while (!socket && attempts < 20) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+    }
+    
+    if (!socket) {
+        console.error('[CHAT] ❌ Socket failed to initialize after waiting');
+        removeChatMessage(typingId);
+        addChatMessage('ai', 'Error: WebSocket connection failed. Please refresh the page.');
+        return;
+    }
+    
+    // Check connection status
+    if (!socket.connected) {
+        console.warn('[CHAT] ⚠️ Socket not connected, attempting to connect...');
+        if (socket.disconnected) {
+            socket.connect();
+        }
+        // Wait for connection
+        let attempts = 0;
+        while (!socket.connected && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            attempts++;
+        }
+    }
+    
+    if (socket.connected) {
+        console.log('[CHAT] ✅ Socket connected, ID:', socket.id);
+    } else {
+        console.warn('[CHAT] ⚠️ Socket not connected, but proceeding with request...');
+        console.warn('[CHAT] Socket state:', { 
+            connected: socket.connected, 
+            disconnected: socket.disconnected,
+            id: socket.id 
+        });
+    }
+    
+    // Reset streaming state
+    streamingMessageId = null;
+    currentStreamingMessage = '';
+    
+    // Choose streaming method: SSE (Cursor-style) or WebSocket
+    const useSSE = true; // Use Server-Sent Events like Cursor AI
+    
+    if (useSSE) {
+        // Cursor-style streaming with Server-Sent Events
+        streamWithSSE(message, typingId);
+    } else {
+        // WebSocket streaming (existing method)
+        streamWithWebSocket(message, typingId);
+    }
+}
+
+// Cursor-style streaming with Server-Sent Events
+async function streamWithSSE(message, typingId) {
     try {
+        const response = await fetch('/api/ai/chat?format=sse', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
+                'X-Session-ID': currentSessionId || 'default'
+            },
+            body: JSON.stringify({
+                message: message,
+                context: {
+                    currentFile: Object.keys(currentFiles)[0] || null,
+                    workspace: currentWorkspace
+                }
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Remove typing indicator
+        removeChatMessage(typingId);
+        
+        // Create streaming message container
+        streamingMessageId = 'stream-' + Date.now();
+        currentStreamingMessage = '';
+        const messagesContainer = document.getElementById('chat-messages');
+        if (messagesContainer) {
+            const messageDiv = document.createElement('div');
+            messageDiv.id = streamingMessageId;
+            messageDiv.className = 'chat-message ai streaming';
+            messageDiv.innerHTML = '<span class="typing-indicator">💭</span><span class="stream-content"></span>';
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Read SSE stream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        
+                        if (data.type === 'start') {
+                            console.log('[SSE] Stream started');
+                        } else if (data.type === 'token') {
+                            // Append token immediately (Cursor-style)
+                            if (data.content) {
+                                currentStreamingMessage += data.content;
+                                const messageDiv = document.getElementById(streamingMessageId);
+                                if (messageDiv) {
+                                    const contentSpan = messageDiv.querySelector('.stream-content');
+                                    if (contentSpan) {
+                                        contentSpan.textContent = currentStreamingMessage;
+                                        // Auto-scroll
+                                        const messagesContainer = document.getElementById('chat-messages');
+                                        if (messagesContainer) {
+                                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (data.type === 'end') {
+                            console.log('[SSE] Stream ended', data);
+                            // Finalize message
+                            const messageDiv = document.getElementById(streamingMessageId);
+                            if (messageDiv) {
+                                const typingIndicator = messageDiv.querySelector('.typing-indicator');
+                                if (typingIndicator) typingIndicator.remove();
+                                
+                                const contentSpan = messageDiv.querySelector('.stream-content');
+                                if (contentSpan && currentStreamingMessage) {
+                                    let formatted = currentStreamingMessage;
+                                    // Highlight code blocks
+                                    formatted = formatted.replace(
+                                        /```(\w+)?\n([\s\S]+?)```/g,
+                                        '<pre class="code-block"><code>$2</code></pre>'
+                                    );
+                                    // Highlight commands
+                                    formatted = formatted.replace(
+                                        /\[EXECUTE:\s*(.+?)\]/gi,
+                                        '<span class="command-marker">🔧 EXECUTING: $1</span>'
+                                    );
+                                    contentSpan.innerHTML = formatted;
+                                }
+                                messageDiv.classList.remove('streaming');
+                            }
+                            streamingMessageId = null;
+                            currentStreamingMessage = '';
+                        } else if (data.type === 'error') {
+                            console.error('[SSE] Stream error:', data.content);
+                            removeChatMessage(typingId);
+                            addChatMessage('ai', 'Error: ' + data.content);
+                        }
+                    } catch (e) {
+                        console.error('[SSE] Parse error:', e, line);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('SSE streaming error:', error);
+        removeChatMessage(typingId);
+        addChatMessage('ai', 'Error: ' + error.message);
+    }
+}
+
+// WebSocket streaming (existing method)
+async function streamWithWebSocket(message, typingId) {
+    try {
+        // Send request - response will be streamed via WebSocket
         const response = await fetch('/api/ai/chat', {
             method: 'POST',
             headers: { 
@@ -995,41 +1785,46 @@ async function sendChatMessage() {
         
         const data = await response.json();
         
+        // Remove typing indicator (streaming will handle it)
         removeChatMessage(typingId);
         
         if (data.success) {
             // Check if commands were executed
             if (data.executed_commands && data.executed_commands > 0) {
-                statusText.textContent = `✅ Executed ${data.executed_commands} command(s)`;
-                statusText.style.color = '#4ec9b0';
-                setTimeout(() => {
-                    if (statusEl) statusEl.style.display = 'none';
-                }, 5000);
+                if (statusText) {
+                    statusText.textContent = `✅ Executed ${data.executed_commands} command(s)`;
+                    statusText.style.color = '#4ec9b0';
+                    setTimeout(() => {
+                        if (statusEl) statusEl.style.display = 'none';
+                    }, 5000);
+                }
             } else {
                 if (statusEl) statusEl.style.display = 'none';
             }
             
-            // Format response with code highlighting
-            let formattedResponse = data.response || '';
-            
-            // If response is empty, show a message
-            if (!formattedResponse || formattedResponse.trim() === '') {
-                formattedResponse = '🤖 AI processed your request but returned no text response.';
+            // If streaming was used, the message is already displayed
+            // Otherwise, fallback to non-streaming display
+            if (!data.streamed && data.response) {
+                let formattedResponse = data.response || '';
+                
+                if (!formattedResponse || formattedResponse.trim() === '') {
+                    formattedResponse = '🤖 AI processed your request but returned no text response.';
+                }
+                
+                // Highlight code blocks
+                formattedResponse = formattedResponse.replace(
+                    /```(\w+)?\n([\s\S]+?)```/g,
+                    '<pre class="code-block"><code>$2</code></pre>'
+                );
+                
+                // Highlight commands
+                formattedResponse = formattedResponse.replace(
+                    /\[EXECUTE:\s*(.+?)\]/gi,
+                    '<span class="command-marker">🔧 EXECUTING: $1</span>'
+                );
+                
+                addChatMessage('ai', formattedResponse);
             }
-            
-            // Highlight code blocks
-            formattedResponse = formattedResponse.replace(
-                /```(\w+)?\n([\s\S]+?)```/g,
-                '<pre class="code-block"><code>$2</code></pre>'
-            );
-            
-            // Highlight commands
-            formattedResponse = formattedResponse.replace(
-                /\[EXECUTE:\s*(.+?)\]/gi,
-                '<span class="command-marker">🔧 EXECUTING: $1</span>'
-            );
-            
-            addChatMessage('ai', formattedResponse);
         } else {
             if (statusEl) statusEl.style.display = 'none';
             addChatMessage('ai', data.response || 'Sorry, I could not process that request.');
@@ -1434,42 +2229,900 @@ function refreshExtensions() {
     }
 }
 
-// Menu handlers
-function showMenu(menuName) {
+// Menu handlers - make globally accessible
+window.showMenu = function(menuName) {
     if (menuName === 'terminal') {
         toggleTerminal();
-    } else if (menuName === 'file') {
-        // File menu actions
-        console.log('File menu clicked');
-    } else if (menuName === 'edit') {
-        // Edit menu actions
-        console.log('Edit menu clicked');
-    } else if (menuName === 'view') {
-        // View menu actions
-        console.log('View menu clicked');
-    } else if (menuName === 'run') {
-        // Run menu actions
-        console.log('Run menu clicked');
-    } else if (menuName === 'help') {
-        // Help menu actions
-        alert('Auto_Punch IDE\n\nPowered by Auto_Punch Ai\n\nKeyboard Shortcuts:\n- Ctrl+` : Toggle Terminal\n- Ctrl+S : Save File');
+    } else if (menuName === 'toolkit') {
+        // Show toolkit view
+        switchView('toolkit');
+        loadToolkit();
+    }
+};
+
+// Dropdown menu functions
+let currentOpenMenu = null;
+
+function toggleMenuDropdown(menuName, event) {
+    event.stopPropagation();
+    const menu = document.getElementById(menuName + '-menu');
+    
+    // Close all other menus
+    closeMenuDropdowns();
+    
+    // Toggle current menu
+    if (menu) {
+        if (currentOpenMenu === menuName) {
+            menu.classList.remove('show');
+            currentOpenMenu = null;
+        } else {
+            menu.classList.add('show');
+            currentOpenMenu = menuName;
+        }
     }
 }
 
+function closeMenuDropdowns() {
+    document.querySelectorAll('.menu-dropdown').forEach(menu => {
+        menu.classList.remove('show');
+    });
+    currentOpenMenu = null;
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', function(event) {
+    if (!event.target.closest('.menu-item-container') && !event.target.closest('.menu-dropdown')) {
+        closeMenuDropdowns();
+    }
+});
+
+// File menu actions
+function openFileDialog() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = (e) => {
+        if (e.target.files[0]) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                openFileContent(e.target.files[0].name, ev.target.result);
+            };
+            reader.readAsText(e.target.files[0]);
+        }
+    };
+    input.click();
+}
+
+function saveCurrentFile() {
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab) {
+        saveFile(activeTab.dataset.path);
+    } else {
+        alert('No file is currently open');
+    }
+}
+
+function saveAllFiles() {
+    document.querySelectorAll('.tab').forEach(tab => {
+        if (tab.dataset.path) {
+            saveFile(tab.dataset.path);
+        }
+    });
+}
+
+function closeCurrentTab() {
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab) {
+        closeTab(activeTab);
+    }
+}
+
+function closeAllTabs() {
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => closeTab(tab));
+}
+
+// Edit menu actions
+function undoAction() {
+    if (editor) {
+        editor.trigger('keyboard', 'undo', null);
+    }
+}
+
+function redoAction() {
+    if (editor) {
+        editor.trigger('keyboard', 'redo', null);
+    }
+}
+
+function cutAction() {
+    if (editor) {
+        editor.trigger('keyboard', 'editor.action.clipboardCutAction', null);
+    }
+}
+
+function copyAction() {
+    if (editor) {
+        editor.trigger('keyboard', 'editor.action.clipboardCopyAction', null);
+    }
+}
+
+function pasteAction() {
+    if (editor) {
+        editor.trigger('keyboard', 'editor.action.clipboardPasteAction', null);
+    }
+}
+
+function findInFile() {
+    if (editor) {
+        editor.getAction('actions.find').run();
+    }
+}
+
+function replaceInFile() {
+    if (editor) {
+        editor.getAction('actions.find').run();
+        setTimeout(() => {
+            const replaceBtn = document.querySelector('.find-widget .replace-input');
+            if (replaceBtn) replaceBtn.focus();
+        }, 100);
+    }
+}
+
+function formatDocument() {
+    if (editor) {
+        editor.getAction('editor.action.formatDocument').run();
+    }
+}
+
+function toggleComment() {
+    if (editor) {
+        editor.getAction('editor.action.commentLine').run();
+    }
+}
+
+// View menu actions
+function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+        sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
+    }
+}
+
+function togglePanel() {
+    toggleTerminal();
+}
+
+// Run menu actions
+function runCurrentFile() {
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab && activeTab.dataset.path) {
+        const filePath = activeTab.dataset.path;
+        const language = detectLanguage(filePath);
+        
+        if (language === 'python') {
+            executeInTerminal(`python "${filePath}"`);
+        } else if (language === 'javascript') {
+            executeInTerminal(`node "${filePath}"`);
+        } else if (language === 'powershell') {
+            executeInTerminal(`powershell -File "${filePath}"`);
+        } else {
+            alert('Cannot run this file type. Please use the terminal to run it manually.');
+        }
+    } else {
+        alert('No file is currently open');
+    }
+}
+
+function runWithoutDebugging() {
+    runCurrentFile();
+}
+
+// Debugging System
+let debugSession = null;
+let isDebugging = false;
+let breakpoints = [];
+let debugVariables = {};
+let debugCallStack = [];
+
+function startDebugging() {
+    const activeTab = document.querySelector('.tab.active');
+    if (!activeTab || !activeTab.dataset.path) {
+        alert('Please open a file to debug');
+        return;
+    }
+    
+    const filePath = activeTab.dataset.path;
+    const language = detectLanguage(filePath);
+    
+    if (!editor) {
+        alert('Editor not initialized');
+        return;
+    }
+    
+    // Check if file has breakpoints
+    const model = editor.getModel();
+    if (!model) {
+        alert('No file content to debug');
+        return;
+    }
+    
+    // Get breakpoints
+    if (breakpointDecorations.length === 0) {
+        const confirmDebug = confirm('No breakpoints set. Start debugging anyway?');
+        if (!confirmDebug) return;
+    }
+    
+    // Start debug session
+    isDebugging = true;
+    debugSession = {
+        filePath: filePath,
+        language: language,
+        startTime: Date.now(),
+        breakpoints: breakpointDecorations.map(bp => ({
+            line: bp.line,
+            column: 1
+        }))
+    };
+    
+    // Update UI
+    updateDebugUI();
+    updateDebugStatus('Debugging started - Running...');
+    
+    // Switch to debug view
+    switchView('debug');
+    
+    // Run the file with debugging
+    runFileWithDebugger(filePath, language);
+}
+
+function stopDebugging() {
+    if (!isDebugging) return;
+    
+    isDebugging = false;
+    debugSession = null;
+    debugVariables = {};
+    debugCallStack = [];
+    
+    // Clear debug decorations
+    if (editor) {
+        const model = editor.getModel();
+        if (model) {
+            editor.deltaDecorations([], []);
+        }
+    }
+    
+    updateDebugUI();
+    updateDebugStatus('Debugging stopped');
+    
+    // Clear variables and call stack
+    document.getElementById('debug-variables').innerHTML = 
+        '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">Variables will appear here when debugging</div>';
+    document.getElementById('debug-callstack').innerHTML = 
+        '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">Call stack will appear here when debugging</div>';
+}
+
+function debugContinue() {
+    if (!isDebugging) return;
+    updateDebugStatus('Continuing execution...');
+    // In a real implementation, this would resume execution
+    setTimeout(() => {
+        updateDebugStatus('Running...');
+    }, 500);
+}
+
+function debugStepOver() {
+    if (!isDebugging) return;
+    updateDebugStatus('Stepping over...');
+    // Simulate stepping over
+    setTimeout(() => {
+        updateDebugStatus('Paused on line ' + (debugSession?.currentLine || '?'));
+        updateDebugVariables();
+    }, 300);
+}
+
+function debugStepInto() {
+    if (!isDebugging) return;
+    updateDebugStatus('Stepping into...');
+    // Simulate stepping into
+    setTimeout(() => {
+        updateDebugStatus('Paused on line ' + (debugSession?.currentLine || '?'));
+        updateDebugVariables();
+        updateDebugCallStack();
+    }, 300);
+}
+
+function debugStepOut() {
+    if (!isDebugging) return;
+    updateDebugStatus('Stepping out...');
+    // Simulate stepping out
+    setTimeout(() => {
+        updateDebugStatus('Paused on line ' + (debugSession?.currentLine || '?'));
+        updateDebugVariables();
+        updateDebugCallStack();
+    }, 300);
+}
+
+function updateDebugUI() {
+    const startBtn = document.getElementById('debug-start-btn');
+    const stopBtn = document.getElementById('debug-stop-btn');
+    const continueBtn = document.getElementById('debug-continue-btn');
+    const stepOverBtn = document.getElementById('debug-step-over-btn');
+    const stepIntoBtn = document.getElementById('debug-step-into-btn');
+    const stepOutBtn = document.getElementById('debug-step-out-btn');
+    
+    if (isDebugging) {
+        if (startBtn) startBtn.style.display = 'none';
+        if (stopBtn) stopBtn.style.display = 'inline-block';
+        if (continueBtn) continueBtn.style.display = 'inline-block';
+        if (stepOverBtn) stepOverBtn.style.display = 'inline-block';
+        if (stepIntoBtn) stepIntoBtn.style.display = 'inline-block';
+        if (stepOutBtn) stepOutBtn.style.display = 'inline-block';
+    } else {
+        if (startBtn) startBtn.style.display = 'inline-block';
+        if (stopBtn) stopBtn.style.display = 'none';
+        if (continueBtn) continueBtn.style.display = 'none';
+        if (stepOverBtn) stepOverBtn.style.display = 'none';
+        if (stepIntoBtn) stepIntoBtn.style.display = 'none';
+        if (stepOutBtn) stepOutBtn.style.display = 'none';
+    }
+}
+
+function updateDebugStatus(message) {
+    const statusEl = document.getElementById('debug-status');
+    if (statusEl) {
+        statusEl.textContent = 'Status: ' + message;
+        statusEl.style.color = isDebugging ? '#4ec9b0' : '#858585';
+    }
+}
+
+function updateDebugVariables() {
+    const varsEl = document.getElementById('debug-variables');
+    if (!varsEl) return;
+    
+    // Simulate variables (in real implementation, get from debugger)
+    debugVariables = {
+        'local': {
+            'i': { value: '5', type: 'number' },
+            'result': { value: '25', type: 'number' },
+            'name': { value: '"test"', type: 'string' }
+        },
+        'global': {
+            'window': { value: '[object Window]', type: 'object' }
+        }
+    };
+    
+    let html = '';
+    for (const [scope, vars] of Object.entries(debugVariables)) {
+        html += `<div style="margin-bottom: 10px;"><strong style="color: #4ec9b0;">${scope}</strong></div>`;
+        for (const [name, info] of Object.entries(vars)) {
+            html += `<div style="padding: 5px 10px; margin-left: 10px; background: rgba(0,0,0,0.2); border-radius: 3px; margin-bottom: 5px;">
+                <span style="color: #4ec9b0;">${name}</span>
+                <span style="color: #858585; margin-left: 10px;">${info.type}</span>
+                <span style="color: #cccccc; margin-left: 10px;">= ${info.value}</span>
+            </div>`;
+        }
+    }
+    
+    varsEl.innerHTML = html || '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">No variables available</div>';
+}
+
+function updateDebugCallStack() {
+    const callstackEl = document.getElementById('debug-callstack');
+    if (!callstackEl) return;
+    
+    // Simulate call stack
+    debugCallStack = [
+        { name: 'main()', file: 'app.py', line: 10 },
+        { name: 'processData()', file: 'utils.py', line: 25 },
+        { name: 'calculate()', file: 'utils.py', line: 42 }
+    ];
+    
+    let html = '';
+    debugCallStack.forEach((frame, index) => {
+        html += `<div style="padding: 8px; margin-bottom: 5px; background: ${index === 0 ? 'rgba(78, 201, 176, 0.1)' : 'rgba(0,0,0,0.2)'}; border-radius: 3px; cursor: pointer;" onclick="jumpToFrame('${frame.file}', ${frame.line})">
+            <div style="color: #4ec9b0; font-weight: bold;">${frame.name}</div>
+            <div style="color: #858585; font-size: 11px; margin-top: 3px;">${frame.file}:${frame.line}</div>
+        </div>`;
+    });
+    
+    callstackEl.innerHTML = html || '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">No call stack available</div>';
+}
+
+function jumpToFrame(file, line) {
+    // Open file and jump to line
+    openFile(file);
+    setTimeout(() => {
+        if (editor) {
+            editor.revealLineInCenter(line);
+            editor.setPosition({ lineNumber: line, column: 1 });
+        }
+    }, 500);
+}
+
+function runFileWithDebugger(filePath, language) {
+    // Execute file with debugger attached
+    let command = '';
+    
+    if (language === 'python') {
+        command = `python -m pdb "${filePath}"`;
+    } else if (language === 'javascript') {
+        command = `node --inspect "${filePath}"`;
+    } else if (language === 'typescript') {
+        command = `ts-node --inspect "${filePath}"`;
+    } else {
+        // For other languages, just run normally
+        command = `"${filePath}"`;
+    }
+    
+    executeInTerminal(command);
+    
+    // Update breakpoints list
+    updateBreakpointsList();
+}
+
+function updateBreakpointsList() {
+    const breakpointsEl = document.getElementById('breakpoints-list');
+    if (!breakpointsEl) return;
+    
+    if (!editor) {
+        breakpointsEl.innerHTML = '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">No file open</div>';
+        return;
+    }
+    
+    const model = editor.getModel();
+    if (!model) {
+        breakpointsEl.innerHTML = '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">No file content</div>';
+        return;
+    }
+    
+    if (breakpointDecorations.length === 0) {
+        breakpointsEl.innerHTML = '<div style="color: #858585; text-align: center; padding: 20px; font-size: 12px;">No breakpoints set. Click in the gutter to add breakpoints.</div>';
+        return;
+    }
+    
+    let html = '';
+    breakpointDecorations.forEach(bp => {
+        const line = bp.line;
+        const lineText = model.getLineContent(line).trim().substring(0, 50);
+        html += `<div style="padding: 8px; margin-bottom: 5px; background: rgba(0,0,0,0.2); border-radius: 3px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="jumpToLine(${line})">
+            <div>
+                <span style="color: #4ec9b0;">Line ${line}</span>
+                <span style="color: #858585; margin-left: 10px; font-size: 11px;">${lineText || '(empty line)'}</span>
+            </div>
+            <button onclick="removeBreakpoint(${line}); event.stopPropagation();" style="background: rgba(248, 119, 113, 0.2); border: 1px solid #f48771; color: #f48771; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Remove</button>
+        </div>`;
+    });
+    
+    breakpointsEl.innerHTML = html;
+}
+
+function jumpToLine(line) {
+    if (editor) {
+        editor.revealLineInCenter(line);
+        editor.setPosition({ lineNumber: line, column: 1 });
+    }
+}
+
+function removeBreakpoint(line) {
+    if (!editor) return;
+    
+    const index = breakpointDecorations.findIndex(d => d.line === line);
+    if (index !== -1) {
+        const decoration = breakpointDecorations[index];
+        editor.deltaDecorations([decoration.id], []);
+        breakpointDecorations.splice(index, 1);
+    }
+    
+    updateBreakpointsList();
+}
+
+function refreshDebugView() {
+    updateBreakpointsList();
+    if (isDebugging) {
+        updateDebugVariables();
+        updateDebugCallStack();
+    }
+}
+
+// Breakpoint management
+let breakpointDecorations = [];
+
+// Enable breakpoints in Monaco Editor
+function initBreakpoints() {
+    if (!editor) return;
+    
+    // Enable breakpoint clicking in gutter
+    editor.onMouseDown((e) => {
+        if (e.target && e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS) {
+            const line = e.target.position.lineNumber;
+            toggleBreakpoint(line);
+        }
+    });
+}
+
+function toggleBreakpoint(line) {
+    if (!editor) return;
+    
+    const model = editor.getModel();
+    if (!model) return;
+    
+    // Check if breakpoint already exists
+    const existingIndex = breakpointDecorations.findIndex(d => d.line === line);
+    
+    if (existingIndex !== -1) {
+        // Remove breakpoint
+        const decoration = breakpointDecorations[existingIndex];
+        editor.deltaDecorations([decoration.id], []);
+        breakpointDecorations.splice(existingIndex, 1);
+    } else {
+        // Add breakpoint
+        const decoration = {
+            range: new monaco.Range(line, 1, line, 1),
+            options: {
+                glyphMarginClassName: 'breakpoint',
+                glyphMarginHoverMessage: { value: 'Breakpoint' },
+                isWholeLine: true
+            }
+        };
+        const ids = editor.deltaDecorations([], [decoration]);
+        breakpointDecorations.push({ id: ids[0], line: line });
+    }
+    
+    updateBreakpointsList();
+}
+
+// Initialize breakpoints after Monaco is ready
+if (typeof monaco !== 'undefined') {
+    setTimeout(initBreakpoints, 2000);
+} else {
+    window.addEventListener('monaco-ready', initBreakpoints);
+}
+
+async function executeInTerminal(command) {
+    toggleTerminal();
+    if (command) {
+        // Execute command directly
+        setTimeout(async () => {
+            appendTerminalOutput('$ ' + command);
+            
+            const statusEl = document.getElementById('terminal-status');
+            const statusText = document.getElementById('terminal-status-text');
+            if (statusEl && statusText) {
+                statusEl.style.display = 'block';
+                statusText.textContent = 'Executing: ' + command;
+                statusText.style.color = '#4ec9b0';
+            }
+            
+            try {
+                const response = await fetch('/api/terminal/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: command })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    appendTerminalOutput(data.output || '');
+                } else {
+                    appendTerminalOutput('Error: ' + (data.error || 'Command failed'));
+                }
+            } catch (error) {
+                appendTerminalOutput('Error: ' + error.message);
+            }
+        }, 100);
+    } else {
+        // Just focus terminal input
+        setTimeout(() => {
+            const terminalInput = document.getElementById('terminal-input');
+            if (terminalInput) terminalInput.focus();
+        }, 100);
+    }
+}
+
+// Command Palette
+const commandPaletteCommands = [
+    { id: 'file.new', label: 'New File', icon: '📄', action: () => { createNewTab(); } },
+    { id: 'file.open', label: 'Open File...', icon: '📂', action: () => { const input = document.createElement('input'); input.type = 'file'; input.onchange = (e) => { if (e.target.files[0]) { const reader = new FileReader(); reader.onload = (ev) => { openFileContent(e.target.files[0].name, ev.target.result); }; reader.readAsText(e.target.files[0]); } }; input.click(); } },
+    { id: 'file.save', label: 'Save', icon: '💾', shortcut: 'Ctrl+S', action: () => { const activeTab = document.querySelector('.tab.active'); if (activeTab) saveFile(activeTab.dataset.path); } },
+    { id: 'file.saveAll', label: 'Save All', icon: '💾', action: () => { document.querySelectorAll('.tab').forEach(tab => saveFile(tab.dataset.path)); } },
+    { id: 'file.close', label: 'Close Editor', icon: '✕', shortcut: 'Ctrl+W', action: () => { const activeTab = document.querySelector('.tab.active'); if (activeTab) closeTab(activeTab); } },
+    { id: 'view.commandPalette', label: 'Show Command Palette', icon: '🔍', shortcut: 'Ctrl+Shift+P', action: () => showCommandPalette() },
+    { id: 'view.terminal', label: 'Toggle Terminal', icon: '💻', shortcut: 'Ctrl+`', action: () => toggleTerminal() },
+    { id: 'view.sidebar', label: 'Toggle Sidebar', icon: '📁', shortcut: 'Ctrl+B', action: () => { const sidebar = document.querySelector('.sidebar'); if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none'; } },
+    { id: 'view.settings', label: 'Open Settings', icon: '⚙️', shortcut: 'Ctrl+,', action: () => { switchView('settings'); } },
+    { id: 'view.shortcuts', label: 'Keyboard Shortcuts', icon: '⌨️', shortcut: 'Ctrl+K Ctrl+S', action: () => { showHelpMenu(); setTimeout(() => switchHelpTab('shortcuts'), 100); } },
+    { id: 'view.help', label: 'Show Help', icon: '❓', action: () => showHelpMenu() },
+    { id: 'ai.assistant', label: 'Open AI Assistant', icon: '🤖', shortcut: 'Ctrl+Shift+A', action: () => switchView('ai') },
+    { id: 'toolkit.open', label: 'Open RedTeam Toolkit', icon: '🔧', shortcut: 'Ctrl+Shift+T', action: () => { switchView('toolkit'); loadToolkit(); } },
+    { id: 'browser.preview', label: 'Open Browser Preview', icon: '🌐', shortcut: 'Ctrl+Shift+B', action: () => switchView('browser') },
+    { id: 'git.status', label: 'Git: Show Status', icon: '🔀', action: () => { switchView('git'); refreshGitStatus(); } },
+    { id: 'search.find', label: 'Find in File', icon: '🔍', shortcut: 'Ctrl+F', action: () => { if (editor) editor.getAction('actions.find').run(); } },
+    { id: 'search.replace', label: 'Replace in File', icon: '🔄', shortcut: 'Ctrl+H', action: () => { if (editor) editor.getAction('actions.find').run(); setTimeout(() => { const replaceBtn = document.querySelector('.find-widget .replace-input'); if (replaceBtn) replaceBtn.focus(); }, 100); } },
+    { id: 'editor.format', label: 'Format Document', icon: '✨', shortcut: 'Shift+Alt+F', action: () => { if (editor) editor.getAction('editor.action.formatDocument').run(); } },
+    { id: 'editor.comment', label: 'Toggle Line Comment', icon: '💬', shortcut: 'Ctrl+/', action: () => { if (editor) editor.getAction('editor.action.commentLine').run(); } },
+];
+
+let commandPaletteSelectedIndex = 0;
+let filteredCommands = [...commandPaletteCommands];
+
+function showCommandPalette() {
+    const palette = document.getElementById('command-palette');
+    const input = document.getElementById('command-palette-input');
+    const results = document.getElementById('command-palette-results');
+    
+    if (!palette || !input || !results) return;
+    
+    palette.style.display = 'flex';
+    filteredCommands = [...commandPaletteCommands];
+    commandPaletteSelectedIndex = 0;
+    input.value = '';
+    input.focus();
+    renderCommandPalette();
+}
+
+function closeCommandPalette() {
+    const palette = document.getElementById('command-palette');
+    if (palette) palette.style.display = 'none';
+    commandPaletteSelectedIndex = 0;
+}
+
+function renderCommandPalette() {
+    const results = document.getElementById('command-palette-results');
+    if (!results) return;
+    
+    results.innerHTML = '';
+    
+    if (filteredCommands.length === 0) {
+        results.innerHTML = '<div class="command-palette-item" style="color: #858585; text-align: center; padding: 20px;">No commands found</div>';
+        return;
+    }
+    
+    filteredCommands.forEach((cmd, index) => {
+        const item = document.createElement('div');
+        item.className = 'command-palette-item' + (index === commandPaletteSelectedIndex ? ' selected' : '');
+        item.innerHTML = `
+            <span class="command-icon">${cmd.icon || '📄'}</span>
+            <span class="command-label">${cmd.label}</span>
+            ${cmd.shortcut ? `<span class="command-shortcut">${cmd.shortcut}</span>` : ''}
+        `;
+        item.onclick = () => executeCommand(cmd);
+        results.appendChild(item);
+    });
+    
+    // Scroll selected item into view
+    const selected = results.querySelector('.selected');
+    if (selected) selected.scrollIntoView({ block: 'nearest' });
+}
+
+function filterCommands(query) {
+    if (!query) {
+        filteredCommands = [...commandPaletteCommands];
+    } else {
+        const lowerQuery = query.toLowerCase();
+        filteredCommands = commandPaletteCommands.filter(cmd => 
+            cmd.label.toLowerCase().includes(lowerQuery) ||
+            cmd.id.toLowerCase().includes(lowerQuery)
+        );
+    }
+    commandPaletteSelectedIndex = 0;
+    renderCommandPalette();
+}
+
+function executeCommand(cmd) {
+    closeCommandPalette();
+    if (cmd.action) {
+        try {
+            cmd.action();
+        } catch (error) {
+            console.error('Error executing command:', error);
+        }
+    }
+}
+
+// Command Palette Event Handlers
+document.addEventListener('DOMContentLoaded', function() {
+    const input = document.getElementById('command-palette-input');
+    if (input) {
+        input.addEventListener('input', (e) => {
+            filterCommands(e.target.value);
+        });
+        
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeCommandPalette();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                commandPaletteSelectedIndex = Math.min(commandPaletteSelectedIndex + 1, filteredCommands.length - 1);
+                renderCommandPalette();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                commandPaletteSelectedIndex = Math.max(commandPaletteSelectedIndex - 1, 0);
+                renderCommandPalette();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (filteredCommands[commandPaletteSelectedIndex]) {
+                    executeCommand(filteredCommands[commandPaletteSelectedIndex]);
+                }
+            }
+        });
+    }
+});
+
+// Help Menu
+function showHelpMenu() {
+    const modal = document.getElementById('help-menu-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        switchHelpTab('welcome');
+    }
+}
+
+function closeHelpMenu() {
+    const modal = document.getElementById('help-menu-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function switchHelpTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.help-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.help-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const content = document.getElementById(`help-${tabName}`);
+    const tabButton = Array.from(document.querySelectorAll('.help-tab')).find(btn => 
+        btn.textContent.toLowerCase().includes(tabName === 'welcome' ? 'welcome' : 
+        tabName === 'shortcuts' ? 'keyboard' : 
+        tabName === 'docs' ? 'documentation' : 
+        tabName === 'tips' ? 'tips' : 'about')
+    );
+    
+    if (content) content.classList.add('active');
+    if (tabButton) tabButton.classList.add('active');
+}
+
+// Close help menu on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const helpModal = document.getElementById('help-menu-modal');
+        if (helpModal && helpModal.style.display !== 'none') {
+            closeHelpMenu();
+        }
+        const commandPalette = document.getElementById('command-palette');
+        if (commandPalette && commandPalette.style.display !== 'none') {
+            closeCommandPalette();
+        }
+    }
+});
+
 // Keyboard Shortcuts
 document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 's') {
+    // Command Palette (Ctrl+Shift+P)
+    if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        showCommandPalette();
+        return;
+    }
+    
+    // Keyboard Shortcuts (Ctrl+K Ctrl+S)
+    if (e.ctrlKey && e.key === 'k' && !e.shiftKey) {
+        // Wait for next key press
+        const handler = (e2) => {
+            if (e2.ctrlKey && e2.key === 's') {
+                e2.preventDefault();
+                showHelpMenu();
+                setTimeout(() => switchHelpTab('shortcuts'), 100);
+            }
+            document.removeEventListener('keydown', handler);
+        };
+        document.addEventListener('keydown', handler);
+        return;
+    }
+    
+    // Settings (Ctrl+,)
+    if (e.ctrlKey && e.key === ',') {
+        e.preventDefault();
+        switchView('settings');
+        return;
+    }
+    
+    // Save (Ctrl+S)
+    if (e.ctrlKey && e.key === 's' && !e.shiftKey) {
         e.preventDefault();
         const activeTab = document.querySelector('.tab.active');
         if (activeTab) {
             saveFile(activeTab.dataset.path);
         }
+        return;
     }
     
+    // Toggle Terminal (Ctrl+`)
     if (e.ctrlKey && e.key === '`') {
         e.preventDefault();
         toggleTerminal();
+        return;
     }
+    
+    // Toggle Sidebar (Ctrl+B)
+    if (e.ctrlKey && e.key === 'b' && !e.shiftKey) {
+        e.preventDefault();
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
+        }
+        return;
+    }
+    
+    // Toggle Panel (Ctrl+J)
+    if (e.ctrlKey && e.key === 'j' && !e.shiftKey) {
+        e.preventDefault();
+        toggleTerminal();
+        return;
+    }
+    
+    // New File (Ctrl+N)
+    if (e.ctrlKey && e.key === 'n' && !e.shiftKey) {
+        e.preventDefault();
+        createNewTab();
+        return;
+    }
+    
+    // Open File (Ctrl+O)
+    if (e.ctrlKey && e.key === 'o' && !e.shiftKey) {
+        e.preventDefault();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.onchange = (ev) => {
+            if (ev.target.files[0]) {
+                const file = ev.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    openFileContent(file.name, e.target.result);
+                };
+                reader.readAsText(file);
+            }
+        };
+        input.click();
+        return;
+    }
+    
+    // Close Tab (Ctrl+W)
+    if (e.ctrlKey && e.key === 'w' && !e.shiftKey) {
+        e.preventDefault();
+        const activeTab = document.querySelector('.tab.active');
+        if (activeTab) closeTab(activeTab);
+        return;
+    }
+    
+    // AI Assistant (Ctrl+Shift+A)
+    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+        e.preventDefault();
+        switchView('ai');
+        return;
+    }
+    
+    // RedTeam Toolkit (Ctrl+Shift+T)
+    if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        switchView('toolkit');
+        loadToolkit();
+        return;
+    }
+    
+    // Browser Preview (Ctrl+Shift+B)
+    if (e.ctrlKey && e.shiftKey && e.key === 'B') {
+        e.preventDefault();
+        switchView('browser');
+        return;
+    }
+    
+    // Find (Ctrl+F) - handled by Monaco
+    // Replace (Ctrl+H) - handled by Monaco
+    // Format (Shift+Alt+F) - handled by Monaco
+    // Comment (Ctrl+/) - handled by Monaco
 });
 
 // Settings
@@ -1979,6 +3632,546 @@ async function refreshToolkitStatus() {
     }
 }
 
+// SignNow Checker Functions
+async function startSignNowChecker() {
+    const comboFile = document.getElementById('signnow-combo-file')?.value || 'combo.txt';
+    const delay = parseFloat(document.getElementById('signnow-delay')?.value || '1.0');
+    const timeout = parseInt(document.getElementById('signnow-timeout')?.value || '10');
+    
+    // Show terminal panel
+    const terminalPanel = document.getElementById('terminal-panel');
+    if (terminalPanel) {
+        terminalPanel.style.display = 'flex';
+        const terminalTab = document.querySelector('.terminal-tab[data-tab="terminal"]');
+        if (terminalTab) {
+            terminalTab.click();
+        }
+    }
+    
+    // Show status
+    const statusEl = document.getElementById('terminal-status');
+    const statusText = document.getElementById('terminal-status-text');
+    if (statusEl && statusText) {
+        statusEl.style.display = 'block';
+        statusText.textContent = 'Starting SignNow checker...';
+        statusText.style.color = '#4ec9b0';
+    }
+    
+    try {
+        const response = await fetch('/api/signnow/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                combo_file: comboFile,
+                delay: delay,
+                timeout: timeout
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            if (statusText) {
+                statusText.textContent = '✓ Checker started - check terminal for output';
+                statusText.style.color = '#4ec9b0';
+                setTimeout(() => {
+                    if (statusEl) statusEl.style.display = 'none';
+                }, 3000);
+            }
+        } else {
+            appendTerminalOutput(`Error: ${data.error || 'Unknown error'}\n`);
+            if (statusText) {
+                statusText.textContent = '✗ Error starting checker';
+                statusText.style.color = '#f48771';
+                setTimeout(() => {
+                    if (statusEl) statusEl.style.display = 'none';
+                }, 5000);
+            }
+        }
+    } catch (error) {
+        console.error('SignNow checker error:', error);
+        appendTerminalOutput(`Error: ${error.message}\n`);
+        if (statusText) {
+            statusText.textContent = '✗ Error: ' + error.message;
+            statusText.style.color = '#f48771';
+            setTimeout(() => {
+                if (statusEl) statusEl.style.display = 'none';
+            }, 5000);
+        }
+    }
+}
+
+
+// RedTeam Toolkit Functions
+async function loadToolkit() {
+    const categoriesDiv = document.getElementById('toolkit-categories');
+    if (!categoriesDiv) return;
+    
+    categoriesDiv.innerHTML = '<div style="color: #858585; padding: 20px; text-align: center;">Loading RedTeam Toolkit...</div>';
+    
+    try {
+        const response = await fetch('/api/toolkit/list');
+        
+        if (!response.ok) {
+            // Try to get error message from response
+            let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error || errorMsg;
+                if (errorData.traceback) {
+                    console.error('Toolkit error traceback:', errorData.traceback);
+                }
+            } catch (e) {
+                // Response is not JSON
+            }
+            categoriesDiv.innerHTML = `<div style="color: #f48771; padding: 20px;">Error loading toolkit: ${errorMsg}</div>`;
+            console.error('Toolkit API error:', response.status, errorMsg);
+            return;
+        }
+        
+        const data = await response.json();
+        
+        console.log('[TOOLKIT] API Response:', {
+            success: data.success,
+            total: data.total,
+            toolsCount: data.tools ? data.tools.length : 0,
+            categories: data.categories
+        });
+        
+        if (data.success && data.tools) {
+            // Filter out "Red Team Tips" category if present
+            const filteredTools = data.tools.filter(tool => tool.category !== 'Red Team Tips');
+            
+            if (filteredTools.length !== data.tools.length) {
+                console.log(`[TOOLKIT] Filtered out ${data.tools.length - filteredTools.length} tools from Red Team Tips`);
+            }
+            
+            console.log(`[TOOLKIT] Displaying ${filteredTools.length} tools`);
+            displayToolkit(filteredTools);
+        } else {
+            categoriesDiv.innerHTML = `<div style="color: #f48771; padding: 20px;">Error loading toolkit: ${data.error || 'Unknown error'}</div>`;
+        }
+    } catch (error) {
+        console.error('Toolkit load error:', error);
+        categoriesDiv.innerHTML = `<div style="color: #f48771; padding: 20px;">Error loading toolkit: ${error.message}</div>`;
+    }
+}
+
+function displayToolkit(tools) {
+    const categoriesDiv = document.getElementById('toolkit-categories');
+    const categoryNav = document.getElementById('toolkit-category-nav');
+    const categoryLinks = document.getElementById('category-links');
+    if (!categoriesDiv) return;
+    
+    // Group tools by category
+    const categories = {};
+    tools.forEach(tool => {
+        // Ensure tool has required properties (defensive check)
+        if (!tool || typeof tool !== 'object') {
+            console.warn('[TOOLKIT] Invalid tool object:', tool);
+            return;
+        }
+        if (!tool.name || typeof tool.name !== 'string' || tool.name.trim() === '') {
+            console.warn('[TOOLKIT] Tool missing or invalid name property:', tool);
+            return; // Skip tools without valid names
+        }
+        const category = (tool.category && String(tool.category)) || 'Other';
+        if (!categories[category]) {
+            categories[category] = [];
+        }
+        categories[category].push(tool);
+    });
+    
+    // Build category navigation
+    let navHtml = '';
+    const sortedCategories = Object.keys(categories).sort();
+    sortedCategories.forEach(category => {
+        // Ensure category is a string before processing
+        const categoryStr = String(category || 'other');
+        const categoryId = categoryStr.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        navHtml += `<button onclick="scrollToCategory('${categoryId}')" style="padding: 6px 12px; background: rgba(78, 201, 176, 0.2); border: 1px solid rgba(78, 201, 176, 0.4); border-radius: 15px; color: #4ec9b0; cursor: pointer; font-size: 12px; transition: all 0.2s;" onmouseover="this.style.background='rgba(78, 201, 176, 0.3)'; this.style.transform='scale(1.05)'" onmouseout="this.style.background='rgba(78, 201, 176, 0.2)'; this.style.transform='scale(1)'">${categoryStr} (${categories[category].length})</button>`;
+    });
+    if (categoryLinks) {
+        categoryLinks.innerHTML = navHtml;
+        if (categoryNav) categoryNav.style.display = 'block';
+    }
+    
+    // Build HTML with category IDs for navigation
+    let html = '';
+    sortedCategories.forEach(category => {
+        const categoryTools = categories[category];
+        // Ensure category is a string before processing
+        const categoryStr = String(category || 'other');
+        const categoryId = categoryStr.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        html += `<div id="category-${categoryId}" class="toolkit-category" style="margin-bottom: 30px; scroll-margin-top: 20px;">`;
+        html += `<h3 style="color: #4ec9b0; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #3c3c3c;">${categoryStr} (${categoryTools.length} tools)</h3>`;
+        html += `<div class="toolkit-tools" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">`;
+        
+        categoryTools.forEach(tool => {
+            // Ensure tool has required properties (defensive check)
+            if (!tool || !tool.name || typeof tool.name !== 'string') {
+                console.warn('[TOOLKIT] Skipping invalid tool:', tool);
+                return;
+            }
+            
+            // Generate tool ID from name if not present
+            const toolNameStr = String(tool.name || 'unknown-tool');
+            const toolId = (tool.id && String(tool.id)) || toolNameStr.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            // Escape tool.id for use in onclick - ensure it's always a string
+            const safeToolId = String(toolId || toolNameStr).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const toolName = toolNameStr;
+            const toolDesc = (tool.description && String(tool.description)) || 'No description available';
+            html += `<div class="toolkit-tool" style="padding: 15px; background: rgba(78, 201, 176, 0.05); border: 1px solid rgba(78, 201, 176, 0.2); border-radius: 5px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(78, 201, 176, 0.1)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='rgba(78, 201, 176, 0.05)'; this.style.transform='translateY(0)'" onclick="useToolkitTool('${safeToolId}')">`;
+            html += `<div style="font-weight: bold; color: #4ec9b0; margin-bottom: 5px;">${toolName}</div>`;
+            html += `<div style="color: #858585; font-size: 12px;">${toolDesc}</div>`;
+            if (tool.discovered) {
+                html += `<div style="color: #858585; font-size: 10px; margin-top: 5px; font-style: italic;">📍 Auto-discovered</div>`;
+            }
+            html += `</div>`;
+        });
+        
+        html += `</div></div>`;
+    });
+    
+    categoriesDiv.innerHTML = html;
+    
+    // Setup scroll buttons visibility
+    setupToolkitScrollButtons();
+}
+
+function scrollToCategory(categoryId) {
+    const element = document.getElementById(`category-${categoryId}`);
+    if (element) {
+        const content = document.getElementById('toolkit-content');
+        if (content) {
+            const offset = element.offsetTop - content.offsetTop - 20;
+            content.scrollTo({
+                top: offset,
+                behavior: 'smooth'
+            });
+        }
+    }
+}
+
+function scrollToolkit(direction) {
+    const content = document.getElementById('toolkit-content');
+    if (!content) return;
+    
+    const scrollAmount = 300; // pixels to scroll
+    const currentScroll = content.scrollTop;
+    const maxScroll = content.scrollHeight - content.clientHeight;
+    
+    if (direction === 'up') {
+        content.scrollTo({
+            top: Math.max(0, currentScroll - scrollAmount),
+            behavior: 'smooth'
+        });
+    } else if (direction === 'down') {
+        content.scrollTo({
+            top: Math.min(maxScroll, currentScroll + scrollAmount),
+            behavior: 'smooth'
+        });
+    }
+}
+
+function setupToolkitScrollButtons() {
+    const content = document.getElementById('toolkit-content');
+    const scrollUpBtn = document.getElementById('toolkit-scroll-up');
+    const scrollDownBtn = document.getElementById('toolkit-scroll-down');
+    
+    if (!content || !scrollUpBtn || !scrollDownBtn) return;
+    
+    function updateScrollButtons() {
+        const scrollTop = content.scrollTop;
+        const scrollHeight = content.scrollHeight;
+        const clientHeight = content.clientHeight;
+        const maxScroll = scrollHeight - clientHeight;
+        
+        // Show/hide buttons based on scroll position
+        if (scrollTop > 50) {
+            scrollUpBtn.style.display = 'block';
+        } else {
+            scrollUpBtn.style.display = 'none';
+        }
+        
+        if (scrollTop < maxScroll - 50) {
+            scrollDownBtn.style.display = 'block';
+        } else {
+            scrollDownBtn.style.display = 'none';
+        }
+    }
+    
+    // Update on scroll
+    content.addEventListener('scroll', updateScrollButtons);
+    
+    // Initial update
+    updateScrollButtons();
+    
+    // Update on resize
+    window.addEventListener('resize', updateScrollButtons);
+}
+
+function searchToolkit(query) {
+    const tools = document.querySelectorAll('.toolkit-tool');
+    const categories = document.querySelectorAll('.toolkit-category');
+    const lowerQuery = query.toLowerCase();
+    
+    if (!query || query.trim() === '') {
+        // Show all tools and categories
+        tools.forEach(tool => tool.style.display = '');
+        categories.forEach(cat => cat.style.display = '');
+        setupToolkitScrollButtons();
+        return;
+    }
+    
+    tools.forEach(tool => {
+        const text = tool.textContent.toLowerCase();
+        if (text.includes(lowerQuery)) {
+            tool.style.display = '';
+        } else {
+            tool.style.display = 'none';
+        }
+    });
+    
+    // Hide categories with no visible tools
+    categories.forEach(category => {
+        const allTools = category.querySelectorAll('.toolkit-tool');
+        let hasVisible = false;
+        allTools.forEach(tool => {
+            if (tool.style.display !== 'none') {
+                hasVisible = true;
+            }
+        });
+        if (!hasVisible) {
+            category.style.display = 'none';
+        } else {
+            category.style.display = '';
+        }
+    });
+    
+    setupToolkitScrollButtons();
+}
+
+function useToolkitTool(toolId) {
+    // Ask AI to use the tool
+    const toolName = toolId.replace(/-/g, ' ');
+    const message = `Use the RedTeam tool: ${toolName}. Install it if needed and show me how to use it.`;
+    
+    // Switch to AI view and send message
+    switchView('ai');
+    setTimeout(() => {
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            chatInput.value = message;
+            sendChatMessage();
+        }
+    }, 100);
+}
+
+function refreshToolkit() {
+    loadToolkit();
+    // Reset scroll position
+    const content = document.getElementById('toolkit-content');
+    if (content) {
+        content.scrollTop = 0;
+    }
+}
+
+// SSH Connection Functions
+function toggleSSHAuthMethod() {
+    const method = document.getElementById('ssh-auth-method').value;
+    const passwordGroup = document.getElementById('ssh-password-group');
+    const keyGroup = document.getElementById('ssh-key-group');
+    const keyPassphraseGroup = document.getElementById('ssh-key-passphrase-group');
+    
+    if (method === 'password') {
+        passwordGroup.style.display = 'block';
+        keyGroup.style.display = 'none';
+        keyPassphraseGroup.style.display = 'none';
+    } else {
+        passwordGroup.style.display = 'none';
+        keyGroup.style.display = 'block';
+        keyPassphraseGroup.style.display = 'block';
+    }
+}
+
+async function addSSHConnection() {
+    const host = document.getElementById('ssh-host').value.trim();
+    const port = parseInt(document.getElementById('ssh-port').value) || 22;
+    const username = document.getElementById('ssh-username').value.trim();
+    const authMethod = document.getElementById('ssh-auth-method').value;
+    const password = authMethod === 'password' ? document.getElementById('ssh-password').value : null;
+    const keyPath = authMethod === 'key' ? document.getElementById('ssh-key-path').value.trim() : null;
+    const name = document.getElementById('ssh-name').value.trim() || `${username}@${host}`;
+    
+    if (!host || !username) {
+        alert('Please fill in Host and Username');
+        return;
+    }
+    
+    if (authMethod === 'password' && !password) {
+        alert('Please enter password');
+        return;
+    }
+    
+    if (authMethod === 'key' && !keyPath) {
+        alert('Please enter private key path');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/ssh/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                host: host,
+                port: port,
+                username: username,
+                auth_method: authMethod,
+                password: password,
+                key_path: keyPath
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            // Clear form
+            document.getElementById('ssh-host').value = '';
+            document.getElementById('ssh-port').value = '22';
+            document.getElementById('ssh-username').value = '';
+            document.getElementById('ssh-password').value = '';
+            document.getElementById('ssh-key-path').value = '';
+            document.getElementById('ssh-name').value = '';
+            
+            // Reload connections
+            loadSSHConnections();
+            alert('SSH connection added successfully!');
+        } else {
+            alert('Error: ' + (data.error || 'Failed to add connection'));
+        }
+    } catch (error) {
+        console.error('SSH connection error:', error);
+        alert('Error adding SSH connection: ' + error.message);
+    }
+}
+
+async function loadSSHConnections() {
+    try {
+        const response = await fetch('/api/ssh/list');
+        const data = await response.json();
+        
+        const connectionsDiv = document.getElementById('ssh-connections');
+        if (!connectionsDiv) return;
+        
+        if (data.success && data.connections) {
+            if (data.connections.length === 0) {
+                connectionsDiv.innerHTML = '<div style="color: #858585; padding: 20px; text-align: center;">No SSH connections saved. Add one above.</div>';
+                return;
+            }
+            
+            let html = '';
+            data.connections.forEach(conn => {
+                const status = conn.connected ? '🟢 Connected' : '⚪ Disconnected';
+                html += `<div style="padding: 15px; background: rgba(78, 201, 176, 0.05); border: 1px solid rgba(78, 201, 176, 0.2); border-radius: 5px; margin-bottom: 10px;">`;
+                html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">`;
+                html += `<div>`;
+                html += `<div style="font-weight: bold; color: #4ec9b0; margin-bottom: 5px;">${conn.name}</div>`;
+                html += `<div style="color: #858585; font-size: 12px;">${conn.username}@${conn.host}:${conn.port}</div>`;
+                html += `<div style="color: #858585; font-size: 11px; margin-top: 5px;">${status}</div>`;
+                html += `</div>`;
+                html += `<div style="display: flex; gap: 5px;">`;
+                if (conn.connected) {
+                    html += `<button onclick="disconnectSSH('${conn.id}')" style="padding: 6px 12px; background: #f48771; border: none; color: white; border-radius: 3px; cursor: pointer; font-size: 11px;">Disconnect</button>`;
+                } else {
+                    html += `<button onclick="connectSSH('${conn.id}')" style="padding: 6px 12px; background: #4ec9b0; border: none; color: white; border-radius: 3px; cursor: pointer; font-size: 11px;">Connect</button>`;
+                }
+                html += `<button onclick="deleteSSHConnection('${conn.id}')" style="padding: 6px 12px; background: #f48771; border: none; color: white; border-radius: 3px; cursor: pointer; font-size: 11px;">Delete</button>`;
+                html += `</div>`;
+                html += `</div>`;
+                html += `</div>`;
+            });
+            
+            connectionsDiv.innerHTML = html;
+        } else {
+            connectionsDiv.innerHTML = '<div style="color: #f48771; padding: 20px;">Error loading connections</div>';
+        }
+    } catch (error) {
+        console.error('Error loading SSH connections:', error);
+        document.getElementById('ssh-connections').innerHTML = '<div style="color: #f48771; padding: 20px;">Error loading connections</div>';
+    }
+}
+
+async function connectSSH(connectionId) {
+    try {
+        socketio.emit('show_terminal', {});
+        socketio.emit('force_show_terminal', {});
+        socketio.emit('terminal_output', {'output': `\n🔐 Connecting to SSH connection: ${connectionId}...\n`});
+        
+        const response = await fetch('/api/ssh/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: connectionId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            socketio.emit('terminal_output', {'output': `✅ Connected successfully!\n`});
+            loadSSHConnections();
+        } else {
+            socketio.emit('terminal_output', {'output': `❌ Connection failed: ${data.error || 'Unknown error'}\n`});
+        }
+    } catch (error) {
+        console.error('SSH connect error:', error);
+        socketio.emit('terminal_output', {'output': `❌ Error: ${error.message}\n`});
+    }
+}
+
+async function disconnectSSH(connectionId) {
+    try {
+        const response = await fetch('/api/ssh/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: connectionId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            loadSSHConnections();
+        }
+    } catch (error) {
+        console.error('SSH disconnect error:', error);
+    }
+}
+
+async function deleteSSHConnection(connectionId) {
+    if (!confirm('Are you sure you want to delete this SSH connection?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/ssh/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: connectionId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            loadSSHConnections();
+        } else {
+            alert('Error: ' + (data.error || 'Failed to delete connection'));
+        }
+    } catch (error) {
+        console.error('SSH delete error:', error);
+        alert('Error deleting connection: ' + error.message);
+    }
+}
+
+function refreshSSHConnections() {
+    loadSSHConnections();
+}
+
 // Load toolkit status on AI view open
 function switchView(view) {
     // Hide all views
@@ -1997,9 +4190,25 @@ function switchView(view) {
         hideBrowserPreview();
     }
     
+    // Load toolkit when toolkit view is opened
+    if (view === 'toolkit') {
+        loadToolkit();
+    }
+    
     // Load toolkit status when AI view is opened
     if (view === 'ai') {
         setTimeout(() => refreshToolkitStatus(), 100);
+    }
+    
+    // Refresh debug view when opened
+    if (view === 'debug') {
+        setTimeout(() => {
+            updateBreakpointsList();
+            if (isDebugging) {
+                updateDebugVariables();
+                updateDebugCallStack();
+            }
+        }, 100);
     }
 }
 

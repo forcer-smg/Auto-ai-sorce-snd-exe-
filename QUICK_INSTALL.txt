@@ -1,0 +1,19 @@
+═══════════════════════════════════════════════════════════════
+  QUICK INSTALL - Copy and Paste
+═══════════════════════════════════════════════════════════════
+
+CORRECT SYNTAX (use dot-backslash):
+
+PowerShell:
+  .\run-installer.ps1
+
+Batch:
+  .\close-and-install.bat
+
+═══════════════════════════════════════════════════════════════
+
+NOTE: Use .\ (dot-backslash) not just \ (backslash)
+
+═══════════════════════════════════════════════════════════════
+
+

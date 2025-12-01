@@ -1,0 +1,22 @@
+═══════════════════════════════════════════════════════════════
+  QUICK COMMANDS - Copy and Paste
+═══════════════════════════════════════════════════════════════
+
+1. STOP ALL PROCESSES (Run this first!):
+   .\MASTER_STOP.ps1
+
+2. RUN INSTALLER:
+   .\run-installer.ps1
+
+3. CHECK BUILD STATUS:
+   .\check-build.ps1
+
+4. OPEN DIST FOLDER:
+   explorer dist
+
+5. RUN INSTALLER MANUALLY (with quotes):
+   & ".\dist\Auto_Punch IDE Setup 1.0.0.exe"
+
+═══════════════════════════════════════════════════════════════
+
+

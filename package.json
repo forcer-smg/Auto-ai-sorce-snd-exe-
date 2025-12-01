@@ -1,0 +1,98 @@
+{
+  "name": "auto-punch-ide-desktop",
+  "version": "1.0.0",
+  "description": "Auto_Punch IDE - Professional Windows Desktop Application",
+  "main": "electron/main.js",
+  "author": "Auto_Punch Ai",
+  "license": "PROPRIETARY",
+  "private": true,
+  "scripts": {
+    "dev": "electron .",
+    "start": "concurrently \"npm run start:flask\" \"wait-on http://localhost:5001 && electron .\"",
+    "start:flask": "python app.py",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:msi": "electron-builder --win --x64 --config.win.target=msi",
+    "build:exe": "electron-builder --win --x64 --config.win.target=nsis",
+    "build:all": "npm run build:exe",
+    "build:all-with-msi": "npm run build:exe && npm run build:msi",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --publish=never",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "com.autopunch.ide",
+    "productName": "Auto_Punch IDE",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "files": [
+      "app/**/*",
+      "templates/**/*",
+      "static/**/*",
+      "electron/**/*",
+      "*.py",
+      "requirements.txt",
+      "RedTeam-Tools/**/*",
+      "!**/node_modules/**/*",
+      "!**/.git/**/*",
+      "!**/dist/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/electron-updater/**/*",
+      "*.py",
+      "requirements.txt",
+      "app/**/*",
+      "templates/**/*",
+      "static/**/*",
+      "RedTeam-Tools/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "msi",
+          "arch": ["x64"]
+        },
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "publisherName": "Auto_Punch Ai",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Auto_Punch IDE",
+      "deleteAppDataOnUninstall": false
+    },
+    "msi": {
+      "oneClick": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Auto_Punch IDE",
+      "warningsAsErrors": false,
+      "menuCategory": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "SMG-Dawn",
+      "repo": "Auto-Punch-IDE-Desktop",
+      "releaseType": "release"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  }
+}
+
